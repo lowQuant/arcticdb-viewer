@@ -1,0 +1,106 @@
+<div class="table-responsive">
+    <table class="table table-sm table-hover table-bordered mb-0">
+        <thead class="table-dark">
+            <tr>
+                <th style="width:30px;">
+                    <input type="checkbox" class="form-check-input"
+                           onchange="document.querySelectorAll('.row-checkbox').forEach(cb => { cb.checked = this.checked; }); toggleRowSelection(this);">
+                </th>
+                <th style="width:50px;">#</th>
+                {% if has_index %}
+                <th class="user-select-none" style="cursor:pointer;"
+                    onclick="sortBy('__index__')">
+                    {{ df.index.name or 'index' }}
+                    {% if sort_col == '__index__' %}
+                    <i class="bi bi-arrow-{{ 'up' if sort_dir == 'asc' else 'down' }} sort-icon active"></i>
+                    {% endif %}
+                </th>
+                {% endif %}
+                {% for col in columns %}
+                <th class="user-select-none" style="cursor:pointer;"
+                    onclick="sortBy('{{ col }}')">
+                    {{ col }}
+                    {% if sort_col == col %}
+                    <i class="bi bi-arrow-{{ 'up' if sort_dir == 'asc' else 'down' }} sort-icon active"></i>
+                    {% else %}
+                    <i class="bi bi-arrow-down-up sort-icon"></i>
+                    {% endif %}
+                </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for idx, row in df.iterrows() %}
+            {% set row_num = loop.index0 + page * page_size %}
+            <tr>
+                <td>
+                    <input type="checkbox" class="form-check-input row-checkbox"
+                           data-row-idx="{{ row_num }}"
+                           onchange="toggleRowSelection(this)">
+                </td>
+                <td class="text-muted">{{ row_num }}</td>
+                {% if has_index %}
+                <td class="text-muted">{{ idx }}</td>
+                {% endif %}
+                {% for col in columns %}
+                <td ondblclick="editCell(this, {{ row_num }}, '{{ col }}')">
+                    {{ row[col] if row[col] is not none and row[col] == row[col] else '' }}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination -->
+<div class="d-flex justify-content-between align-items-center mt-2 mb-3">
+    <span class="text-muted small">
+        Showing {{ page * page_size + 1 }}-{{ [page * page_size + df|length, total_rows]|min }} of {{ total_rows }} rows
+        {% if is_filtered %}
+        (filtered)
+        {% endif %}
+    </span>
+    <nav>
+        <ul class="pagination pagination-sm mb-0">
+            <li class="page-item {{ 'disabled' if page == 0 }}">
+                <a class="page-link" href="#" onclick="event.preventDefault(); loadPage({{ page - 1 }})">
+                    <i class="bi bi-chevron-left"></i>
+                </a>
+            </li>
+
+            {% set start_page = [page - 2, 0]|max %}
+            {% set end_page = [start_page + 5, total_pages]|min %}
+
+            {% if start_page > 0 %}
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="event.preventDefault(); loadPage(0)">1</a>
+            </li>
+            {% if start_page > 1 %}
+            <li class="page-item disabled"><span class="page-link">...</span></li>
+            {% endif %}
+            {% endif %}
+
+            {% for p in range(start_page, end_page) %}
+            <li class="page-item {{ 'active' if p == page }}">
+                <a class="page-link" href="#" onclick="event.preventDefault(); loadPage({{ p }})">{{ p + 1 }}</a>
+            </li>
+            {% endfor %}
+
+            {% if end_page < total_pages %}
+            {% if end_page < total_pages - 1 %}
+            <li class="page-item disabled"><span class="page-link">...</span></li>
+            {% endif %}
+            <li class="page-item">
+                <a class="page-link" href="#" onclick="event.preventDefault(); loadPage({{ total_pages - 1 }})">{{ total_pages }}</a>
+            </li>
+            {% endif %}
+
+            <li class="page-item {{ 'disabled' if page >= total_pages - 1 }}">
+                <a class="page-link" href="#" onclick="event.preventDefault(); loadPage({{ page + 1 }})">
+                    <i class="bi bi-chevron-right"></i>
+                </a>
+            </li>
+        </ul>
+    </nav>
+</div>

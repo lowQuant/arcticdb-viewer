@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Welcome - ADBView{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-4">
+    <div class="col-lg-8">
+        <div class="text-center mb-4">
+            <h2><i class="bi bi-database"></i> ADBView</h2>
+            <p class="text-muted">Connect to an ArcticDB instance to get started.</p>
+        </div>
+
+        {% if error %}
+        <div class="alert alert-danger alert-dismissible fade show">
+            <i class="bi bi-exclamation-triangle"></i> {{ error }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        <!-- Auto-detected .env connection -->
+        {% if env_connection %}
+        <div class="card bg-dark border border-info mb-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">
+                            <i class="bi bi-lightning-fill text-info"></i>
+                            Auto-detected from environment
+                        </h6>
+                        <span class="text-muted small">
+                            S3 bucket: <code>{{ env_connection.bucket }}</code> &middot;
+                            Region: <code>{{ env_connection.region }}</code>
+                        </span>
+                        {% if is_connected() and active_connection() == env_connection.name %}
+                        <span class="badge bg-success ms-2">Connected</span>
+                        {% endif %}
+                    </div>
+                    <form method="post" action="/connect">
+                        <input type="hidden" name="name" value="{{ env_connection.name }}">
+                        <input type="hidden" name="uri" value="{{ env_connection.uri }}">
+                        <input type="hidden" name="type" value="s3_env">
+                        {% if is_connected() and active_connection() == env_connection.name %}
+                        <a href="/libraries" class="btn btn-info">
+                            <i class="bi bi-arrow-right"></i> Open
+                        </a>
+                        {% else %}
+                        <button type="submit" class="btn btn-info">
+                            <i class="bi bi-plug"></i> Connect
+                        </button>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Saved connections -->
+        {% if connections %}
+        <h6 class="text-muted mb-2"><i class="bi bi-bookmark"></i> Saved connections</h6>
+        {% for conn in connections %}
+        <div class="card bg-dark border mb-2">
+            <div class="card-body py-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>{{ conn.name }}</strong>
+                        {% if conn.type == 'lmdb' %}
+                        <span class="badge bg-secondary ms-1">LMDB</span>
+                        {% elif conn.type == 's3' %}
+                        <span class="badge bg-warning text-dark ms-1">S3</span>
+                        {% elif conn.type == 'mem' %}
+                        <span class="badge bg-dark border ms-1">Memory</span>
+                        {% endif %}
+                        {% if is_connected() and active_connection() == conn.name %}
+                        <span class="badge bg-success ms-1">Connected</span>
+                        {% endif %}
+                    </div>
+                    <div class="d-flex gap-1">
+                        {% if is_connected() and active_connection() == conn.name %}
+                        <a href="/libraries" class="btn btn-sm btn-success">
+                            <i class="bi bi-arrow-right"></i> Open
+                        </a>
+                        {% else %}
+                        <form method="post" action="/connect" class="d-inline">
+                            <input type="hidden" name="name" value="{{ conn.name }}">
+                            <input type="hidden" name="uri" value="{{ conn.uri }}">
+                            <input type="hidden" name="type" value="{{ conn.type }}">
+                            <button type="submit" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-plug"></i> Connect
+                            </button>
+                        </form>
+                        {% endif %}
+                        <button class="btn btn-sm btn-outline-danger"
+                                hx-delete="/connections/{{ conn.name }}"
+                                hx-confirm="Remove '{{ conn.name }}'?">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        <!-- Add new connection -->
+        <div class="text-center mt-4">
+            <a href="/connections/new" class="btn btn-outline-primary">
+                <i class="bi bi-plus-lg"></i> Add new connection
+            </a>
+        </div>
+
+        {% if not connections and not env_connection %}
+        <div class="text-center text-muted mt-4">
+            <p>No connections configured. Add a connection to an ArcticDB instance.</p>
+            <p class="small">
+                Supports <strong>LMDB</strong> (local files),
+                <strong>S3</strong> (AWS, MinIO, etc.), or
+                auto-detection from <code>.env</code> files.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,850 @@
+{% extends "base.html" %}
+{% block title %}{{ symbol }} - ADBView{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/libraries">Libraries</a></li>
+        <li class="breadcrumb-item"><a href="/libraries/{{ library }}/symbols">{{ library }}</a></li>
+        <li class="breadcrumb-item active">{{ symbol }}</li>
+    </ol>
+</nav>
+
+<!-- Symbol info -->
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h4 class="mb-1"><i class="bi bi-table"></i> {{ symbol }}</h4>
+        <span class="badge bg-secondary">{{ description.rows }} rows</span>
+        <span class="badge bg-secondary">{{ description.columns|length }} columns</span>
+        {% if description.index %}
+        <span class="badge bg-info">index: {{ description.index.name }}</span>
+        {% endif %}
+        {% if description.date_range %}
+        <span class="badge bg-info">{{ description.date_range[0][:10] }} to {{ description.date_range[1][:10] }}</span>
+        {% endif %}
+    </div>
+    <div>
+        <button class="btn btn-sm btn-outline-danger"
+                hx-delete="/libraries/{{ library }}/symbols/{{ symbol }}"
+                hx-confirm="Delete symbol '{{ symbol }}'? This cannot be undone."
+                hx-on::after-request="if(event.detail.successful) window.location.href='/libraries/{{ library }}/symbols'">
+            <i class="bi bi-trash"></i> Delete Symbol
+        </button>
+    </div>
+</div>
+
+<!-- Query Builder -->
+<div class="card bg-dark border mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <span class="fw-bold small"><i class="bi bi-funnel"></i> Query Builder</span>
+        <div>
+            <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                    <i class="bi bi-plus-lg"></i> Add operation
+                </button>
+                <ul class="dropdown-menu dropdown-menu-dark">
+                    <li><a class="dropdown-item" href="#" onclick="addOp('filter')"><i class="bi bi-funnel"></i> Filter rows</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="addOp('deduplicate')"><i class="bi bi-list-check"></i> Unique / Deduplicate</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="addOp('group_by')"><i class="bi bi-collection"></i> Group &amp; Aggregate</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="addOp('sort')"><i class="bi bi-sort-alpha-down"></i> Sort</a></li>
+                    <li><a class="dropdown-item" href="#" onclick="addOp('columns')"><i class="bi bi-layout-three-columns"></i> Select columns</a></li>
+                </ul>
+            </div>
+            <button class="btn btn-sm btn-primary ms-1" onclick="executeQuery()">
+                <i class="bi bi-play-fill"></i> Apply
+            </button>
+            <button class="btn btn-sm btn-outline-secondary ms-1" onclick="clearQuery()">
+                Clear
+            </button>
+        </div>
+    </div>
+    <div class="card-body py-2" id="query-operations">
+        <!-- Operations added here dynamically -->
+    </div>
+    <div class="card-footer py-1" id="query-help" style="display:none;">
+        <span class="small text-muted">
+            Values: <code>10^6</code>, <code>2.5e3</code>, <code>1_000</code>.
+            Between: <code>100,500</code>. Dates: <code>2025-01-01,2025-06-30</code>.
+        </span>
+    </div>
+</div>
+
+<!-- Controls row: chart | badges | limit, page size -->
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-sm btn-outline-info" onclick="toggleChart()">
+            <i class="bi bi-graph-up"></i> Chart
+        </button>
+        <div id="active-badges" class="d-flex align-items-center gap-1"></div>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <span class="small text-muted">Show</span>
+        <select id="limit-mode" class="form-select form-select-sm" style="width:75px;" onchange="executeQuery()">
+            <option value="">all</option>
+            <option value="first">first</option>
+            <option value="last">last</option>
+        </select>
+        <input type="number" id="limit-n" class="form-control form-control-sm" value="100" min="1"
+               style="width:70px; display:none;" onchange="executeQuery()">
+        <span class="small text-muted" id="limit-rows-label" style="display:none;">rows</span>
+        <span class="text-muted">|</span>
+        <label class="form-label small mb-0">Page</label>
+        <select id="page-size" class="form-select form-select-sm" style="width:70px;" onchange="executeQuery()">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="250">250</option>
+            <option value="500">500</option>
+        </select>
+    </div>
+</div>
+
+<!-- Chart (collapsible) -->
+<div id="chart-section" style="display:none;" class="mb-3">
+    <div class="card bg-dark border">
+        <div class="card-header py-2">
+            <!-- Main chart controls -->
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="small fw-bold"><i class="bi bi-graph-up"></i> Main chart</span>
+                <div class="d-flex gap-2 align-items-center">
+                    <label class="small text-muted mb-0">X</label>
+                    <select id="chart-x" class="form-select form-select-sm" style="width:130px;" onchange="onChartSettingChange()">
+                        <option value="__index__">{{ description.index.name or 'index' }}</option>
+                        {% for col in description.columns %}
+                        <option value="{{ col }}">{{ col }}</option>
+                        {% endfor %}
+                    </select>
+                    <label class="small text-muted mb-0">Type</label>
+                    <select id="chart-type" class="form-select form-select-sm" style="width:120px;" onchange="onChartSettingChange()">
+                        <option value="line">Line</option>
+                        {% if has_ohlc %}
+                        <option value="candlestick">Candlestick</option>
+                        {% endif %}
+                        <option value="bar">Bar</option>
+                        <option value="scatter">Scatter</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleChart()"><i class="bi bi-x-lg"></i></button>
+                </div>
+            </div>
+            <!-- Y column checkboxes (hidden for candlestick) -->
+            <div id="chart-y-section" class="d-flex align-items-center gap-1 flex-wrap">
+                <span class="small text-muted me-1">Y columns:</span>
+                <div id="chart-y-checks" class="d-flex gap-1 flex-wrap">
+                    {% for col in description.columns %}
+                    <div class="form-check form-check-inline mb-0">
+                        <input class="form-check-input chart-y-check" type="checkbox" value="{{ col }}" id="cy-{{ col }}"
+                               onchange="onChartSettingChange()">
+                        <label class="form-check-label small" for="cy-{{ col }}">{{ col }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <!-- Subplots -->
+            <div id="subplot-configs" class="mt-2"></div>
+            <button class="btn btn-sm btn-outline-secondary mt-1" onclick="addSubplot()">
+                <i class="bi bi-plus-lg"></i> Add subplot
+            </button>
+        </div>
+        <div class="card-body py-2" id="chart-container"></div>
+    </div>
+</div>
+
+<!-- Row actions bar -->
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <div id="delete-rows-bar" style="display:none;">
+        <button class="btn btn-sm btn-danger" onclick="deleteSelectedRows()">
+            <i class="bi bi-trash"></i> Delete selected rows
+        </button>
+        <span class="text-muted ms-2" id="selected-count">0 selected</span>
+    </div>
+    <div class="ms-auto">
+        <button class="btn btn-sm btn-outline-success" onclick="showAddRowForm()">
+            <i class="bi bi-plus-lg"></i> Add row
+        </button>
+    </div>
+</div>
+
+<!-- Add row form (hidden by default) -->
+<div id="add-row-form" style="display:none;" class="card bg-dark border mb-2">
+    <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="small fw-bold"><i class="bi bi-plus-lg"></i> Add new row</span>
+            <button class="btn btn-sm btn-outline-secondary" onclick="hideAddRowForm()"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="row g-2" id="add-row-fields">
+            {% if description.index %}
+            <div class="col-auto">
+                <label class="form-label small mb-0">{{ description.index.name }} <span class="text-info">(index)</span></label>
+                <input type="text" class="form-control form-control-sm add-row-input" data-col="{{ description.index.name }}" placeholder="e.g. 2026-01-01">
+            </div>
+            {% endif %}
+            {% for col in description.columns %}
+            <div class="col-auto">
+                <label class="form-label small mb-0">{{ col }}</label>
+                <input type="text" class="form-control form-control-sm add-row-input" data-col="{{ col }}" placeholder="{{ col }}">
+            </div>
+            {% endfor %}
+        </div>
+        <div class="mt-2">
+            <button class="btn btn-sm btn-success" onclick="submitAddRow()">
+                <i class="bi bi-plus-lg"></i> Add
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Data table -->
+<div class="table-container" id="data-table"
+     hx-get="/api/data/{{ library }}/{{ symbol }}?page=0&page_size={{ page_size }}"
+     hx-trigger="load, refreshTable from:body"
+     hx-swap="innerHTML">
+    <div class="text-center py-4">
+        <div class="spinner-border spinner-border-sm" role="status"></div> Loading data...
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+    const LIB = "{{ library }}";
+    const SYM = "{{ symbol }}";
+    const ALL_COLUMNS = {{ description.columns | tojson }};
+    const INDEX_NAME = "{{ description.index.name if description.index else '' }}";
+
+    let chartInstance = null;
+    let chartVisible = false;
+
+    // ── Current query state ──
+    let currentQuery = {};
+
+    // ── Limit mode toggle ──
+    document.getElementById("limit-mode").addEventListener("change", function() {
+        const hasLimit = this.value !== "";
+        document.getElementById("limit-n").style.display = hasLimit ? "" : "none";
+        document.getElementById("limit-rows-label").style.display = hasLimit ? "" : "none";
+    });
+    // Also handle Enter in limit-n
+    document.getElementById("limit-n").addEventListener("keydown", function(e) {
+        if (e.key === "Enter") { e.preventDefault(); executeQuery(); }
+    });
+
+    // ── Column options HTML ──
+    function colOptionsHTML(includeIndex) {
+        let html = includeIndex && INDEX_NAME ? `<option value="__index__">${INDEX_NAME} (index)</option>` : '';
+        html += ALL_COLUMNS.map(c => `<option value="${c}">${c}</option>`).join('');
+        return html;
+    }
+
+    // ── Operation templates ──
+    const OP_TEMPLATES = {
+        filter: () => `
+            <div class="op-row d-flex gap-2 align-items-center mb-1" data-type="filter">
+                <span class="badge bg-primary">Filter</span>
+                <select class="form-select form-select-sm op-col" style="width:140px;">${colOptionsHTML(true)}</select>
+                <select class="form-select form-select-sm op-operator" style="width:140px;">
+                    <option value="eq">= equals</option>
+                    <option value="neq">!= not equals</option>
+                    <option value="gt">&gt; greater than</option>
+                    <option value="gte">&gt;= greater or equal</option>
+                    <option value="lt">&lt; less than</option>
+                    <option value="lte">&lt;= less or equal</option>
+                    <option value="between">between (a,b)</option>
+                    <option value="contains">contains</option>
+                    <option value="startswith">starts with</option>
+                    <option value="endswith">ends with</option>
+                    <option value="regex">regex</option>
+                </select>
+                <input type="text" class="form-control form-control-sm op-value" placeholder="Value (e.g. 10^6)" style="width:160px;">
+                <button class="btn btn-sm btn-outline-danger" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
+            </div>`,
+
+        deduplicate: () => `
+            <div class="op-row d-flex gap-2 align-items-center mb-1" data-type="deduplicate">
+                <span class="badge bg-success">Unique</span>
+                <span class="small text-muted">Keep one row per</span>
+                <select class="form-select form-select-sm op-col" style="width:140px;">${colOptionsHTML(true)}</select>
+                <select class="form-select form-select-sm op-keep" style="width:100px;">
+                    <option value="last">last</option>
+                    <option value="first">first</option>
+                </select>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
+            </div>`,
+
+        group_by: () => `
+            <div class="op-row d-flex gap-2 align-items-center mb-1" data-type="group_by">
+                <span class="badge bg-warning text-dark">Group</span>
+                <span class="small text-muted">Group by</span>
+                <select class="form-select form-select-sm op-col" style="width:140px;">${colOptionsHTML(true)}</select>
+                <span class="small text-muted">then</span>
+                <select class="form-select form-select-sm op-agg" style="width:110px;">
+                    <option value="last">last value</option>
+                    <option value="first">first value</option>
+                    <option value="mean">average</option>
+                    <option value="sum">sum</option>
+                    <option value="count">count</option>
+                    <option value="min">minimum</option>
+                    <option value="max">maximum</option>
+                    <option value="median">median</option>
+                    <option value="std">std dev</option>
+                </select>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
+            </div>`,
+
+        sort: () => `
+            <div class="op-row d-flex gap-2 align-items-center mb-1" data-type="sort">
+                <span class="badge bg-info">Sort</span>
+                <select class="form-select form-select-sm op-col" style="width:140px;">${colOptionsHTML(true)}</select>
+                <select class="form-select form-select-sm op-dir" style="width:120px;">
+                    <option value="asc">ascending</option>
+                    <option value="desc">descending</option>
+                </select>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
+            </div>`,
+
+        columns: () => {
+            const checks = ALL_COLUMNS.map(c =>
+                `<div class="form-check form-check-inline">
+                    <input class="form-check-input col-check" type="checkbox" value="${c}" id="col-${c}" checked>
+                    <label class="form-check-label small" for="col-${c}">${c}</label>
+                </div>`
+            ).join('');
+            return `
+            <div class="op-row mb-1" data-type="columns">
+                <div class="d-flex gap-2 align-items-center mb-1">
+                    <span class="badge bg-dark border">Columns</span>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleAllCols(true)">All</button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleAllCols(false)">None</button>
+                    <button class="btn btn-sm btn-outline-danger ms-auto" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
+                </div>
+                <div class="ps-2">${checks}</div>
+            </div>`;
+        },
+    };
+
+    function addOp(type) {
+        if (type !== 'filter') {
+            const existing = document.querySelector(`.op-row[data-type="${type}"]`);
+            if (existing) {
+                showToast(`${type} operation already added`, "error");
+                return;
+            }
+        }
+        const container = document.getElementById("query-operations");
+        container.insertAdjacentHTML("beforeend", OP_TEMPLATES[type]());
+        document.getElementById("query-help").style.display = "";
+    }
+
+    function removeOp(btn) {
+        btn.closest(".op-row").remove();
+        if (!document.querySelector(".op-row")) {
+            document.getElementById("query-help").style.display = "none";
+        }
+    }
+
+    function toggleAllCols(checked) {
+        document.querySelectorAll(".col-check").forEach(cb => cb.checked = checked);
+    }
+
+    // ── Enter key triggers Apply ──
+    document.getElementById("query-operations").addEventListener("keydown", function(e) {
+        if (e.key === "Enter") { e.preventDefault(); executeQuery(); }
+    });
+
+    // ── Build query from UI ──
+    function buildQueryFromUI() {
+        const q = {};
+
+        // Filters
+        const filters = [];
+        document.querySelectorAll('.op-row[data-type="filter"]').forEach(row => {
+            const col = row.querySelector(".op-col").value;
+            const op = row.querySelector(".op-operator").value;
+            const val = row.querySelector(".op-value").value;
+            if (col && op && val) filters.push({ col, op, val });
+        });
+        if (filters.length) q.filters = filters;
+
+        // Deduplicate
+        const dedupRow = document.querySelector('.op-row[data-type="deduplicate"]');
+        if (dedupRow) {
+            q.deduplicate = {
+                col: dedupRow.querySelector(".op-col").value,
+                keep: dedupRow.querySelector(".op-keep").value,
+            };
+        }
+
+        // Group by
+        const gbRow = document.querySelector('.op-row[data-type="group_by"]');
+        if (gbRow) {
+            q.group_by = {
+                col: gbRow.querySelector(".op-col").value,
+                agg: gbRow.querySelector(".op-agg").value,
+            };
+        }
+
+        // Sort
+        const sortRow = document.querySelector('.op-row[data-type="sort"]');
+        if (sortRow) {
+            q.sort = {
+                col: sortRow.querySelector(".op-col").value,
+                dir: sortRow.querySelector(".op-dir").value,
+            };
+        }
+
+        // Limit (from always-visible controls)
+        const limitMode = document.getElementById("limit-mode").value;
+        if (limitMode) {
+            const n = parseInt(document.getElementById("limit-n").value) || 100;
+            q.limit = { mode: limitMode, n: n };
+        }
+
+        // Columns
+        const colsRow = document.querySelector('.op-row[data-type="columns"]');
+        if (colsRow) {
+            const selected = Array.from(colsRow.querySelectorAll(".col-check:checked")).map(cb => cb.value);
+            if (selected.length > 0 && selected.length < ALL_COLUMNS.length) {
+                q.columns = selected;
+            }
+        }
+
+        return q;
+    }
+
+    // ── URL building ──
+    function buildUrl(page) {
+        const pageSize = document.getElementById("page-size").value;
+        let url = `/api/data/${LIB}/${SYM}?page=${page}&page_size=${pageSize}`;
+        if (Object.keys(currentQuery).length > 0) {
+            url += `&query=${encodeURIComponent(JSON.stringify(currentQuery))}`;
+        }
+        return url;
+    }
+
+    function buildQueryParam() {
+        if (Object.keys(currentQuery).length > 0) {
+            return `&query=${encodeURIComponent(JSON.stringify(currentQuery))}`;
+        }
+        return '';
+    }
+
+    // ── Execute ──
+    function executeQuery() {
+        currentQuery = buildQueryFromUI();
+        updateBadges();
+        loadPage(0);
+        autoUpdateChart();
+    }
+
+    function clearQuery() {
+        currentQuery = {};
+        document.getElementById("query-operations").innerHTML = "";
+        document.getElementById("query-help").style.display = "none";
+        document.getElementById("limit-mode").value = "";
+        document.getElementById("limit-n").style.display = "none";
+        document.getElementById("limit-rows-label").style.display = "none";
+        updateBadges();
+        loadPage(0);
+        autoUpdateChart();
+    }
+
+    function loadPage(page) {
+        htmx.ajax("GET", buildUrl(page), "#data-table");
+    }
+
+    // ── Sort shortcut from column headers ──
+    function sortBy(col) {
+        let sortRow = document.querySelector('.op-row[data-type="sort"]');
+        if (!sortRow) {
+            addOp('sort');
+            sortRow = document.querySelector('.op-row[data-type="sort"]');
+        }
+        const colSelect = sortRow.querySelector('.op-col');
+        const dirSelect = sortRow.querySelector('.op-dir');
+
+        if (currentQuery.sort && currentQuery.sort.col === col) {
+            dirSelect.value = currentQuery.sort.dir === "asc" ? "desc" : "asc";
+        } else {
+            colSelect.value = col;
+            dirSelect.value = "asc";
+        }
+        executeQuery();
+    }
+
+    // ── Active badges ──
+    function updateBadges() {
+        const container = document.getElementById("active-badges");
+        const q = currentQuery;
+        if (!Object.keys(q).length) { container.innerHTML = ""; return; }
+
+        let html = "";
+        (q.filters || []).forEach(f => {
+            const name = f.col === "__index__" ? (INDEX_NAME || "index") : f.col;
+            html += `<span class="badge bg-primary me-1">${name} ${f.op} ${f.val}</span>`;
+        });
+        if (q.deduplicate) {
+            const name = q.deduplicate.col === "__index__" ? (INDEX_NAME || "index") : q.deduplicate.col;
+            html += `<span class="badge bg-success me-1">unique: ${name} (${q.deduplicate.keep})</span>`;
+        }
+        if (q.group_by) {
+            const name = q.group_by.col === "__index__" ? (INDEX_NAME || "index") : q.group_by.col;
+            html += `<span class="badge bg-warning text-dark me-1">group: ${name} (${q.group_by.agg})</span>`;
+        }
+        if (q.sort) {
+            const name = q.sort.col === "__index__" ? (INDEX_NAME || "index") : q.sort.col;
+            html += `<span class="badge bg-info me-1">sort: ${name} ${q.sort.dir}</span>`;
+        }
+        if (q.limit) {
+            html += `<span class="badge bg-secondary me-1">${q.limit.mode} ${q.limit.n} rows</span>`;
+        }
+        if (q.columns) {
+            html += `<span class="badge bg-dark border me-1">${q.columns.length} columns</span>`;
+        }
+        container.innerHTML = html;
+    }
+
+    // ── Chart ──
+    function toggleChart() {
+        const section = document.getElementById("chart-section");
+        chartVisible = section.style.display === "none";
+        section.style.display = chartVisible ? "block" : "none";
+        if (!chartVisible) {
+            destroyAllCharts();
+        }
+        if (chartVisible) {
+            updateChartTypeUI();
+            autoSelectYColumns();
+            drawChart();
+        }
+    }
+
+    function destroyAllCharts() {
+        if (window.chartInstance) { window.chartInstance.destroy(); window.chartInstance = null; }
+        (window.subplotInstances || []).forEach(c => c.destroy());
+        window.subplotInstances = [];
+    }
+
+    function getSelectedYCols() {
+        return Array.from(document.querySelectorAll(".chart-y-check:checked")).map(cb => cb.value);
+    }
+
+    function autoSelectYColumns() {
+        const checked = getSelectedYCols();
+        if (checked.length === 0) {
+            const checkboxes = document.querySelectorAll(".chart-y-check");
+            let count = 0;
+            checkboxes.forEach(cb => {
+                if (count < 2) { cb.checked = true; count++; }
+            });
+        }
+    }
+
+    function updateChartTypeUI() {
+        const type = document.getElementById("chart-type").value;
+        const ySection = document.getElementById("chart-y-section");
+        // Hide Y column checkboxes for candlestick (auto-detects OHLC)
+        ySection.style.display = type === "candlestick" ? "none" : "";
+    }
+
+    function onChartSettingChange() {
+        updateChartTypeUI();
+        if (chartVisible) drawChart();
+    }
+
+    function drawChart() {
+        const chartType = document.getElementById("chart-type").value;
+        const xCol = document.getElementById("chart-x").value;
+
+        if (chartType !== "candlestick") {
+            const yCols = getSelectedYCols();
+            if (yCols.length === 0) {
+                destroyAllCharts();
+                document.getElementById("chart-container").innerHTML =
+                    '<p class="text-muted text-center py-3">Select Y columns to draw a chart.</p>';
+                return;
+            }
+        }
+
+        let url = `/api/chart/${LIB}/${SYM}?x_col=${encodeURIComponent(xCol)}&chart_type=${chartType}`;
+        if (chartType !== "candlestick") {
+            url += `&y_cols=${encodeURIComponent(getSelectedYCols().join(','))}`;
+        }
+        url += buildQueryParam();
+
+        // Subplots
+        const spConfigs = getSubplotConfigs();
+        if (spConfigs.length > 0) {
+            url += `&subplots=${encodeURIComponent(JSON.stringify(spConfigs))}`;
+        }
+
+        destroyAllCharts();
+        htmx.ajax("GET", url, "#chart-container");
+    }
+
+    function autoUpdateChart() {
+        if (!chartVisible) return;
+        const chartType = document.getElementById("chart-type").value;
+
+        if (chartType === "candlestick") {
+            drawChart();
+            return;
+        }
+
+        const activeCols = currentQuery.columns || ALL_COLUMNS;
+        let anyValid = false;
+        document.querySelectorAll(".chart-y-check").forEach(cb => {
+            const inData = activeCols.includes(cb.value);
+            if (!inData && cb.checked) cb.checked = false;
+            if (inData && cb.checked) anyValid = true;
+        });
+
+        if (anyValid) {
+            drawChart();
+        } else {
+            destroyAllCharts();
+            document.getElementById("chart-container").innerHTML =
+                '<p class="text-muted text-center py-3">Selected columns no longer in data. Pick new Y columns.</p>';
+        }
+    }
+
+    // ── Subplots ──
+    function addSubplot() {
+        const container = document.getElementById("subplot-configs");
+        const idx = container.children.length;
+        const colOpts = ALL_COLUMNS.map(c => `<option value="${c}">${c}</option>`).join('');
+        container.insertAdjacentHTML("beforeend", `
+            <div class="d-flex gap-2 align-items-center mt-1 subplot-row">
+                <span class="badge bg-secondary">Subplot ${idx + 1}</span>
+                <select class="form-select form-select-sm sp-y" style="width:130px;" onchange="onChartSettingChange()">
+                    ${colOpts}
+                </select>
+                <select class="form-select form-select-sm sp-type" style="width:90px;" onchange="onChartSettingChange()">
+                    <option value="bar">Bar</option>
+                    <option value="line">Line</option>
+                    <option value="scatter">Scatter</option>
+                </select>
+                <button class="btn btn-sm btn-outline-danger" onclick="this.closest('.subplot-row').remove(); onChartSettingChange();">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        `);
+        onChartSettingChange();
+    }
+
+    function getSubplotConfigs() {
+        const configs = [];
+        document.querySelectorAll(".subplot-row").forEach(row => {
+            configs.push({
+                y_cols: row.querySelector(".sp-y").value,
+                type: row.querySelector(".sp-type").value,
+            });
+        });
+        return configs;
+    }
+
+    // ── Cell editing with confirmation ──
+    // States: idle → editing → confirming → saving
+    let activeEdit = null; // track current edit to prevent overlaps
+
+    function editCell(el, rowIdx, colName) {
+        if (activeEdit) return; // prevent double edits
+        const originalValue = el.innerText.trim();
+        activeEdit = { el, rowIdx, colName, originalValue };
+
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = originalValue;
+        input.className = "form-control form-control-sm";
+        input.style.minWidth = "80px";
+
+        input.addEventListener("keydown", function(e) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+                const newValue = input.value;
+                if (newValue === originalValue) {
+                    cancelEdit(el, originalValue);
+                } else {
+                    showConfirmBar(el, rowIdx, colName, originalValue, newValue);
+                }
+            }
+            if (e.key === "Escape") {
+                e.stopPropagation();
+                cancelEdit(el, originalValue);
+            }
+        });
+
+        input.addEventListener("blur", function() {
+            // If we didn't transition to confirm, cancel
+            setTimeout(() => {
+                if (activeEdit && activeEdit.el === el && !el.querySelector(".edit-confirm")) {
+                    cancelEdit(el, originalValue);
+                }
+            }, 100);
+        });
+
+        el.innerText = "";
+        el.appendChild(input);
+        input.focus();
+        input.select();
+    }
+
+    function showConfirmBar(el, rowIdx, colName, originalValue, newValue) {
+        el.innerHTML = "";
+        const bar = document.createElement("div");
+        bar.className = "edit-confirm d-flex align-items-center gap-1";
+        bar.innerHTML = `
+            <span class="small"><code>${originalValue}</code> &rarr; <code>${newValue}</code></span>
+            <button class="btn btn-sm btn-success py-0 px-1 edit-save-btn" title="Save (Enter)">
+                <i class="bi bi-check-lg"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-secondary py-0 px-1 edit-undo-btn" title="Undo (Esc)">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        `;
+        el.appendChild(bar);
+
+        const saveBtn = bar.querySelector(".edit-save-btn");
+        const undoBtn = bar.querySelector(".edit-undo-btn");
+
+        saveBtn.addEventListener("click", () => doSave(el, rowIdx, colName, originalValue, newValue));
+        undoBtn.addEventListener("click", () => cancelEdit(el, originalValue));
+
+        // Focus the save button so Enter confirms
+        saveBtn.focus();
+
+        // Global keydown for this confirm state
+        function onKey(e) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                document.removeEventListener("keydown", onKey, true);
+                doSave(el, rowIdx, colName, originalValue, newValue);
+            }
+            if (e.key === "Escape") {
+                e.preventDefault();
+                document.removeEventListener("keydown", onKey, true);
+                cancelEdit(el, originalValue);
+            }
+        }
+        document.addEventListener("keydown", onKey, true);
+        // Store cleanup ref
+        el._editKeyHandler = onKey;
+    }
+
+    function doSave(el, rowIdx, colName, originalValue, newValue) {
+        if (el._editKeyHandler) {
+            document.removeEventListener("keydown", el._editKeyHandler, true);
+            delete el._editKeyHandler;
+        }
+        el.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+        const formData = new FormData();
+        formData.append("row_idx", rowIdx);
+        formData.append("col_name", colName);
+        formData.append("value", newValue);
+
+        fetch(`/api/data/${LIB}/${SYM}`, {
+            method: "PUT",
+            body: formData,
+        }).then(r => {
+            if (r.ok) {
+                el.innerText = newValue;
+                showToast(`Updated ${colName}: ${originalValue} → ${newValue}`);
+            } else {
+                el.innerText = originalValue;
+                showToast("Failed to update cell", "error");
+            }
+            activeEdit = null;
+        }).catch(() => {
+            el.innerText = originalValue;
+            showToast("Failed to update cell", "error");
+            activeEdit = null;
+        });
+    }
+
+    function cancelEdit(el, originalValue) {
+        if (el._editKeyHandler) {
+            document.removeEventListener("keydown", el._editKeyHandler, true);
+            delete el._editKeyHandler;
+        }
+        el.innerText = originalValue;
+        activeEdit = null;
+    }
+
+    // ── Row selection ──
+    function toggleRowSelection(checkbox) {
+        const bar = document.getElementById("delete-rows-bar");
+        const checked = document.querySelectorAll(".row-checkbox:checked");
+        document.getElementById("selected-count").textContent = checked.length + " selected";
+        bar.style.display = checked.length > 0 ? "block" : "none";
+    }
+
+    function deleteSelectedRows() {
+        const checked = document.querySelectorAll(".row-checkbox:checked");
+        const indices = Array.from(checked).map(cb => parseInt(cb.dataset.rowIdx));
+        if (!confirm(`Delete ${indices.length} row(s)? This cannot be undone.`)) return;
+
+        const formData = new FormData();
+        formData.append("row_indices", JSON.stringify(indices));
+        fetch(`/api/rows/${LIB}/${SYM}`, {
+            method: "DELETE",
+            body: formData,
+        }).then(r => {
+            if (r.ok) {
+                loadPage(0);
+                document.getElementById("delete-rows-bar").style.display = "none";
+                showToast("Rows deleted successfully");
+            } else {
+                showToast("Failed to delete rows", "error");
+            }
+        });
+    }
+
+    // ── Add row ──
+    function showAddRowForm() {
+        document.getElementById("add-row-form").style.display = "block";
+        const firstInput = document.querySelector(".add-row-input");
+        if (firstInput) firstInput.focus();
+    }
+
+    function hideAddRowForm() {
+        document.getElementById("add-row-form").style.display = "none";
+        document.querySelectorAll(".add-row-input").forEach(el => el.value = "");
+    }
+
+    // Enter in add-row fields triggers submit
+    document.getElementById("add-row-fields")?.addEventListener("keydown", function(e) {
+        if (e.key === "Enter") { e.preventDefault(); submitAddRow(); }
+        if (e.key === "Escape") { hideAddRowForm(); }
+    });
+
+    function submitAddRow() {
+        const data = {};
+        let hasValue = false;
+        document.querySelectorAll(".add-row-input").forEach(input => {
+            const col = input.dataset.col;
+            const val = input.value.trim();
+            if (val) { data[col] = val; hasValue = true; }
+        });
+        if (!hasValue) {
+            showToast("Enter at least one value", "error");
+            return;
+        }
+
+        fetch(`/api/addrow/${LIB}/${SYM}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+        }).then(r => {
+            if (r.ok) {
+                hideAddRowForm();
+                loadPage(0);
+                showToast("Row added successfully");
+            } else {
+                r.text().then(t => showToast("Error: " + t, "error"));
+            }
+        });
+    }
+</script>
+{% endblock %}

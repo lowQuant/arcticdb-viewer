@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}New Connection - ADBView{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-4">
+    <div class="col-lg-6">
+        <nav aria-label="breadcrumb" class="mb-3">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                <li class="breadcrumb-item active">New Connection</li>
+            </ol>
+        </nav>
+
+        <h4 class="mb-3"><i class="bi bi-plug"></i> Add Connection</h4>
+
+        {% if error %}
+        <div class="alert alert-danger alert-dismissible fade show">
+            <i class="bi bi-exclamation-triangle"></i> {{ error }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        <!-- Type selector -->
+        <ul class="nav nav-tabs mb-3" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-lmdb" type="button"
+                        onclick="document.getElementById('conn_type').value='lmdb'">
+                    <i class="bi bi-hdd"></i> LMDB (Local)
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-s3" type="button"
+                        onclick="document.getElementById('conn_type').value='s3'">
+                    <i class="bi bi-cloud"></i> S3 (Cloud)
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-mem" type="button"
+                        onclick="document.getElementById('conn_type').value='mem'">
+                    <i class="bi bi-memory"></i> In-Memory
+                </button>
+            </li>
+        </ul>
+
+        <form method="post" action="/connections/new">
+            <input type="hidden" name="conn_type" id="conn_type" value="lmdb">
+
+            <!-- Connection name (shared) -->
+            <div class="mb-3">
+                <label class="form-label">Connection name</label>
+                <input type="text" name="name" class="form-control" placeholder="e.g. My Local DB" required>
+            </div>
+
+            <div class="tab-content">
+                <!-- LMDB tab -->
+                <div class="tab-pane fade show active" id="tab-lmdb">
+                    <div class="mb-3">
+                        <label class="form-label">Database path</label>
+                        <input type="text" name="lmdb_path" class="form-control"
+                               placeholder="/path/to/database">
+                        <div class="form-text">Path to the LMDB directory on this machine.</div>
+                    </div>
+                </div>
+
+                <!-- S3 tab -->
+                <div class="tab-pane fade" id="tab-s3">
+                    <div class="mb-3">
+                        <label class="form-label">Bucket name</label>
+                        <input type="text" name="s3_bucket" class="form-control" placeholder="my-bucket">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Region</label>
+                        <input type="text" name="s3_region" class="form-control" placeholder="us-east-1">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Endpoint (optional)</label>
+                        <input type="text" name="s3_endpoint" class="form-control"
+                               placeholder="Leave empty for AWS default">
+                        <div class="form-text">Custom endpoint for MinIO or other S3-compatible services.</div>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input type="checkbox" name="s3_aws_auth" class="form-check-input" id="aws-auth-check"
+                               onchange="toggleCredFields(this.checked)">
+                        <label class="form-check-label" for="aws-auth-check">
+                            Use AWS SDK authentication (from ~/.aws/credentials)
+                        </label>
+                    </div>
+
+                    <div id="cred-fields">
+                        <div class="mb-3">
+                            <label class="form-label">Access Key</label>
+                            <input type="text" name="s3_access_key" class="form-control" id="s3-access">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Secret Key</label>
+                            <input type="password" name="s3_secret_key" class="form-control" id="s3-secret">
+                        </div>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input type="checkbox" name="s3_https" class="form-check-input" id="https-check" checked>
+                        <label class="form-check-label" for="https-check">Use HTTPS</label>
+                    </div>
+                </div>
+
+                <!-- In-Memory tab -->
+                <div class="tab-pane fade" id="tab-mem">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        In-memory storage is for testing only. All data is lost when the server stops.
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-plug"></i> Test &amp; Connect
+                </button>
+                <a href="/" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleCredFields(awsAuth) {
+        const fields = document.getElementById("cred-fields");
+        fields.style.display = awsAuth ? "none" : "block";
+    }
+</script>
+{% endblock %}

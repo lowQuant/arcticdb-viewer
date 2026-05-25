@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Libraries - ADBView{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="mb-0"><i class="bi bi-collection"></i> Libraries</h4>
+            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#create-form">
+                <i class="bi bi-plus-lg"></i> New Library
+            </button>
+        </div>
+
+        <!-- Create library form -->
+        <div class="collapse mb-3" id="create-form">
+            <div class="card card-body bg-dark border">
+                <form hx-post="/libraries" hx-target="#library-list" hx-swap="innerHTML"
+                      hx-on::after-request="if(event.detail.successful) this.reset()">
+                    <div class="input-group">
+                        <input type="text" name="name" class="form-control" placeholder="Library name" required>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-plus-lg"></i> Create
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Library list -->
+        <div id="library-list">
+            {% include "partials/library_list.html" %}
+        </div>
+    </div>
+</div>
+{% endblock %}

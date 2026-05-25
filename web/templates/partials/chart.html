@@ -1,0 +1,173 @@
+<div id="chart-panels">
+    <div style="height:350px; position:relative;">
+        <canvas id="{{ chart_id }}"></canvas>
+    </div>
+</div>
+<script>
+(function() {
+    const mainData = {{ main_chart | safe }};
+    const subplotsData = {{ subplots | safe }};
+    const panelsContainer = document.getElementById("chart-panels");
+
+    // Create subplot canvases
+    subplotsData.forEach((sp, i) => {
+        const div = document.createElement("div");
+        div.style.height = "180px";
+        div.style.position = "relative";
+        div.style.marginTop = "4px";
+        const canvas = document.createElement("canvas");
+        canvas.id = "subplot-" + i;
+        div.appendChild(canvas);
+        panelsContainer.appendChild(div);
+    });
+
+    renderChartPanel("{{ chart_id }}", mainData, true);
+    subplotsData.forEach((sp, i) => renderChartPanel("subplot-" + i, sp, false));
+})();
+
+function renderChartPanel(canvasId, chartData, isMain) {
+    const ctx = document.getElementById(canvasId).getContext("2d");
+    const colors = ["#0d6efd","#198754","#dc3545","#ffc107","#0dcaf0","#6f42c1","#fd7e14","#20c997"];
+    const type = chartData.chart_type;
+    const upColor = "#198754";
+    const downColor = "#dc3545";
+    const upBg = "#19875488";
+    const downBg = "#dc354588";
+
+    let chart;
+
+    if (type === "candlestick") {
+        const ohlcData = chartData.datasets[0].data;
+
+        // Custom candlestick plugin
+        const candlestickPlugin = {
+            id: 'candlestick',
+            afterDatasetsDraw(chart) {
+                const { ctx, scales: { x, y } } = chart;
+                const meta = chart.getDatasetMeta(0);
+                const barWidth = Math.max(2, (x.width / ohlcData.length) * 0.6);
+                const wickWidth = Math.max(1, barWidth * 0.1);
+
+                ohlcData.forEach((d, i) => {
+                    if (!d || d.o == null) return;
+                    const cx = meta.data[i].x;
+                    const isUp = d.c >= d.o;
+
+                    // Wick (high to low)
+                    ctx.beginPath();
+                    ctx.strokeStyle = isUp ? upColor : downColor;
+                    ctx.lineWidth = wickWidth;
+                    ctx.moveTo(cx, y.getPixelForValue(d.h));
+                    ctx.lineTo(cx, y.getPixelForValue(d.l));
+                    ctx.stroke();
+
+                    // Body (open to close)
+                    const bodyTop = y.getPixelForValue(Math.max(d.o, d.c));
+                    const bodyBot = y.getPixelForValue(Math.min(d.o, d.c));
+                    const bodyHeight = Math.max(1, bodyBot - bodyTop);
+                    ctx.fillStyle = isUp ? upBg : downBg;
+                    ctx.strokeStyle = isUp ? upColor : downColor;
+                    ctx.lineWidth = 1;
+                    ctx.fillRect(cx - barWidth/2, bodyTop, barWidth, bodyHeight);
+                    ctx.strokeRect(cx - barWidth/2, bodyTop, barWidth, bodyHeight);
+                });
+            }
+        };
+
+        // Use invisible scatter points for positioning + tooltip
+        chart = new Chart(ctx, {
+            type: "scatter",
+            data: {
+                labels: chartData.x_values,
+                datasets: [{
+                    label: "OHLC",
+                    data: ohlcData.map((d, i) => ({ x: i, y: d ? d.c : null })),
+                    pointRadius: 0,
+                    pointHitRadius: 10,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: "linear",
+                        title: { display: isMain, text: chartData.x_label },
+                        ticks: {
+                            maxTicksLimit: 15,
+                            callback: function(val) {
+                                const idx = Math.round(val);
+                                if (idx >= 0 && idx < chartData.x_values.length) {
+                                    const lbl = chartData.x_values[idx];
+                                    return lbl.length > 10 ? lbl.substring(0, 10) : lbl;
+                                }
+                                return '';
+                            }
+                        },
+                        min: -0.5,
+                        max: ohlcData.length - 0.5,
+                    },
+                    y: {
+                        beginAtZero: false,
+                        min: Math.min(...ohlcData.filter(d=>d).map(d=>d.l)) * 0.998,
+                        max: Math.max(...ohlcData.filter(d=>d).map(d=>d.h)) * 1.002,
+                    },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: function(items) {
+                                const idx = Math.round(items[0].parsed.x);
+                                return chartData.x_values[idx] || '';
+                            },
+                            label: function(ctx) {
+                                const idx = Math.round(ctx.parsed.x);
+                                const d = ohlcData[idx];
+                                if (!d) return '';
+                                return [`O: ${d.o.toFixed(2)}`, `H: ${d.h.toFixed(2)}`, `L: ${d.l.toFixed(2)}`, `C: ${d.c.toFixed(2)}`];
+                            }
+                        }
+                    }
+                },
+            },
+            plugins: [candlestickPlugin],
+        });
+    } else {
+        // Line / bar / scatter
+        chart = new Chart(ctx, {
+            type: type,
+            data: {
+                labels: chartData.x_values,
+                datasets: chartData.datasets.map((ds, i) => ({
+                    label: ds.label,
+                    data: ds.data,
+                    borderColor: colors[i % colors.length],
+                    backgroundColor: type === "bar" ? colors[i % colors.length] + "88" : "transparent",
+                    pointRadius: type === "scatter" ? 3 : 0,
+                    tension: 0.1,
+                })),
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: { display: isMain, text: chartData.x_label },
+                        ticks: { maxTicksLimit: 20 },
+                    },
+                },
+                plugins: { legend: { position: "top" } },
+                interaction: { mode: "index", intersect: false },
+            },
+        });
+    }
+
+    if (isMain) {
+        if (window.chartInstance) window.chartInstance.destroy();
+        window.chartInstance = chart;
+    }
+    if (!window.subplotInstances) window.subplotInstances = [];
+    if (!isMain) window.subplotInstances.push(chart);
+}
+</script>

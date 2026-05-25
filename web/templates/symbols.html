@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}{{ library }} - ADBView{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Breadcrumb -->
+        <nav aria-label="breadcrumb" class="mb-3">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/libraries">Libraries</a></li>
+                <li class="breadcrumb-item active">{{ library }}</li>
+            </ol>
+        </nav>
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="mb-0"><i class="bi bi-database"></i> {{ library }}</h4>
+            <div class="d-flex gap-1">
+                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#create-symbol-form">
+                    <i class="bi bi-plus-lg"></i> New Symbol
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#upload-form">
+                    <i class="bi bi-upload"></i> Upload CSV
+                </button>
+            </div>
+        </div>
+
+        <!-- Search -->
+        <div class="mb-3">
+            <input type="search" class="form-control" placeholder="Search symbols..."
+                   name="q" value="{{ query }}"
+                   hx-get="/libraries/{{ library }}/symbols"
+                   hx-target="#symbol-list"
+                   hx-swap="innerHTML"
+                   hx-trigger="keyup changed delay:300ms"
+                   hx-include="this">
+        </div>
+
+        <!-- Create Symbol form -->
+        <div class="collapse mb-3" id="create-symbol-form">
+            <div class="card card-body bg-dark border">
+                <h6 class="mb-2"><i class="bi bi-plus-lg"></i> Create new symbol</h6>
+                <div class="mb-2">
+                    <label class="form-label small">Symbol name</label>
+                    <input type="text" id="new-sym-name" class="form-control form-control-sm" placeholder="e.g. my_data" required>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">Index type</label>
+                    <div class="d-flex gap-2">
+                        <select id="new-sym-index-type" class="form-select form-select-sm" style="width:150px;">
+                            <option value="datetime">DateTime index</option>
+                            <option value="integer">Integer index</option>
+                            <option value="none">No named index</option>
+                        </select>
+                        <input type="text" id="new-sym-index-name" class="form-control form-control-sm" placeholder="Index name (e.g. Date)" style="width:150px;">
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">Columns</label>
+                    <div id="new-sym-columns">
+                        <!-- Column rows added dynamically -->
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary mt-1" onclick="addColumnDef()">
+                        <i class="bi bi-plus-lg"></i> Add column
+                    </button>
+                </div>
+                <div class="d-flex gap-2 mt-2">
+                    <button class="btn btn-sm btn-primary" onclick="createSymbol()">
+                        <i class="bi bi-plus-lg"></i> Create
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#create-symbol-form">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload CSV -->
+        <div class="collapse mb-3" id="upload-form">
+            <div class="card card-body bg-dark border">
+                <h6 class="mb-2"><i class="bi bi-upload"></i> Upload CSV as symbol</h6>
+                <form hx-post="/api/data/{{ library }}/upload"
+                      hx-target="#symbol-list" hx-swap="innerHTML"
+                      hx-encoding="multipart/form-data"
+                      hx-on::after-request="if(event.detail.successful) this.reset()">
+                    <div class="mb-2">
+                        <input type="text" name="symbol" class="form-control form-control-sm" placeholder="Symbol name" required>
+                    </div>
+                    <div class="mb-2">
+                        <input type="file" name="file" class="form-control form-control-sm" accept=".csv" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="bi bi-upload"></i> Upload
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Symbol list -->
+        <div id="symbol-list">
+            {% include "partials/symbol_list.html" %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const LIB = "{{ library }}";
+
+    function addColumnDef() {
+        const container = document.getElementById("new-sym-columns");
+        const idx = container.children.length;
+        container.insertAdjacentHTML("beforeend", `
+            <div class="d-flex gap-2 align-items-center mb-1 col-def-row">
+                <input type="text" class="form-control form-control-sm col-def-name" placeholder="Column name" style="width:180px;">
+                <select class="form-select form-select-sm col-def-type" style="width:130px;">
+                    <option value="float">Number (float)</option>
+                    <option value="int">Number (int)</option>
+                    <option value="str">Text</option>
+                    <option value="bool">Boolean</option>
+                </select>
+                <button class="btn btn-sm btn-outline-danger" onclick="this.closest('.col-def-row').remove()">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        `);
+    }
+
+    // Start with 2 column rows
+    addColumnDef();
+    addColumnDef();
+
+    // Enter in column fields adds another column row
+    document.getElementById("new-sym-columns").addEventListener("keydown", function(e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            // If last column row and has a name, add another
+            const rows = document.querySelectorAll(".col-def-row");
+            const lastRow = rows[rows.length - 1];
+            const name = lastRow.querySelector(".col-def-name").value.trim();
+            if (name) addColumnDef();
+        }
+    });
+
+    function createSymbol() {
+        const name = document.getElementById("new-sym-name").value.trim();
+        if (!name) { showToast("Symbol name is required", "error"); return; }
+
+        const indexType = document.getElementById("new-sym-index-type").value;
+        const indexName = document.getElementById("new-sym-index-name").value.trim();
+
+        const columns = [];
+        document.querySelectorAll(".col-def-row").forEach(row => {
+            const colName = row.querySelector(".col-def-name").value.trim();
+            const colType = row.querySelector(".col-def-type").value;
+            if (colName) columns.push({ name: colName, type: colType });
+        });
+
+        if (columns.length === 0) { showToast("Add at least one column", "error"); return; }
+
+        fetch(`/api/symbol/${LIB}/create`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                symbol: name,
+                index_type: indexType,
+                index_name: indexName || null,
+                columns: columns,
+            }),
+        }).then(r => {
+            if (r.ok) {
+                showToast(`Symbol '${name}' created`);
+                // Refresh symbol list
+                htmx.ajax("GET", `/libraries/${LIB}/symbols`, "#symbol-list");
+                // Collapse the form
+                const form = document.getElementById("create-symbol-form");
+                bootstrap.Collapse.getOrCreateInstance(form).hide();
+            } else {
+                r.text().then(t => showToast("Error: " + t, "error"));
+            }
+        });
+    }
+</script>
+{% endblock %}
