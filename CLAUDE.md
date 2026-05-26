@@ -15,7 +15,7 @@ core/              Shared ArcticDB CRUD operations (pure Python)
   connection.py    ConnectionManager: multi-instance, save/load ~/.adbview/connections.json
   operations.py    All library/symbol/data functions used by both web and MCP
 
-web/               FastAPI + Jinja2 + HTMX + Bootstrap 5 (dark theme)
+web/               FastAPI + Jinja2 + HTMX + Bootstrap 5 (dark + light themes)
   app.py           FastAPI app, connection middleware, template globals
   routes/          connections.py, libraries.py, symbols.py, data.py
   templates/       Server-rendered HTML with HTMX partials
@@ -32,18 +32,19 @@ The core layer is the single source of truth for all ArcticDB interactions. Both
 ## Connection Management
 
 - Web UI: welcome page at `/` with connection manager. Supports LMDB, S3, auto-detect from .env
-- Saved connections stored in `~/.adbview/connections.json`
-- Active connection tracked via in-memory `ConnectionManager` singleton + browser cookie
-- Middleware in `web/app.py` redirects to `/` if not connected (except open paths)
-- MCP server: always connects via .env (no connection manager UI)
+- Saved connections stored in `~/.adbview/connections.json` (schema: `{connections: [{name, type, uri}], last_used}`)
+- Active connection tracked via in-memory `ConnectionManager` singleton + `adbview_connection` cookie for auto-reconnect
+- Middleware in `web/app.py` redirects to `/` if not connected (except `OPEN_PATHS` + anything under `/connections/`)
+- MCP server connection fallback chain (`run_mcp.py`): `--connection NAME` → `.env` S3 vars → `last_used` saved connection → first saved connection. Exits if none available.
 
 ## Running the App
 
 ```bash
-pip install -r requirements.txt
-python run_web.py                              # Web UI at http://localhost:8000
+pip install -r requirements.txt                # Python 3.10+ required
+python run_web.py                              # Web UI at http://localhost:8000 (uvicorn --reload)
 python run_mcp.py --transport stdio            # MCP for local LLM clients
 python run_mcp.py --transport sse --port 8001  # MCP for remote access
+python run_mcp.py --connection NAME            # Use a saved connection instead of .env
 ```
 
 ## Key Conventions
@@ -54,8 +55,12 @@ python run_mcp.py --transport sse --port 8001  # MCP for remote access
 - Data view has a query builder pipeline: filter → deduplicate → group → sort → limit → columns → paginate
 - Pagination uses ArcticDB's native `row_range` for unqueried views; query operations do full reads
 - MCP write tools accept CSV strings (parsed via `pd.read_csv(io.StringIO(...))`)
-- Bootstrap 5.3 dark theme + Bootstrap Icons + Chart.js via CDN, no JS build step
-- Route path conflicts: `/api/data/{lib}/{sym:path}` is greedy — put specific routes like `/api/chart/`, `/api/rows/` on separate prefixes
+- Bootstrap 5.3 (`data-bs-theme` dark/light, persisted to `localStorage`) + Bootstrap Icons + Chart.js via CDN, no JS build step
+- Route path conflicts: `/api/data/{lib}/{sym:path}` is greedy — put specific routes like `/api/chart/`, `/api/rows/`, `/api/addrow/`, `/api/sidepane/` on separate prefixes
+- Filter values support `10^6` (caret = exponent), `2.5e3`, `1_000_000`, ISO dates, and `dayfirst=True` European dates (`DD.MM.YYYY`)
+- MultiIndex symbols with `(date, localsymbol)` get a "contract mode" chart UI: rank-based front-month extraction, spread (rank1 − rank2), overlay; uses a `dte` column to rank if present, else alphabetical
+- Side-pane metadata convention: data view looks for a symbol matching the library name (e.g. library `futures` → symbol `Futures`) in a `universe` library, matched against rows by `ibkr_symbol` / `symbol` / `ticker` / `name`
+- Mutations return empty bodies with HTMX `HX-Trigger` headers for toasts and table refreshes — don't replace this with JSON responses
 
 ## ArcticDB API Quick Reference
 
