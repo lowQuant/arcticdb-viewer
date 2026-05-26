@@ -4,6 +4,16 @@ A web-based data browser and MCP server for [ArcticDB](https://arcticdb.io) — 
 
 Browse libraries and symbols, view and edit DataFrames with pagination, filtering, grouping, and charting. Includes an MCP server for LLM integration with Claude.
 
+![Data view — chart with EMA(50) study, side-pane metadata, and paginated table (light theme)](light_theme.png)
+
+<sub>The data view: query pipeline, line/candlestick/bar charting with SMA/EMA studies, side-pane metadata from a `universe` library, and an editable paginated table. Dark and light themes — toggle from the navbar.</sub>
+
+## Screenshots
+
+| Connection picker (dark) | Symbol grid (dark) |
+|---|---|
+| ![Welcome page with connection picker](dark_theme1.png) | ![Symbol tile grid for the futures library](dark_theme2.png) |
+
 ## Features
 
 ### Web UI
@@ -20,8 +30,8 @@ Browse libraries and symbols, view and edit DataFrames with pagination, filterin
   - **Limit rows** — show first/last N rows
 - **Cell editing** — double-click to edit, Enter to confirm with undo option, ESC to cancel
 - **Row management** — add new rows, select and delete multiple rows
-- **Charting** — line, bar, scatter, and candlestick charts with subplot support (e.g. price + volume)
-- **Dark theme** — Bootstrap 5 dark mode
+- **Charting** — line, bar, scatter, and candlestick charts with subplot support (e.g. price + volume), SMA/EMA studies, drag-to-zoom, contract-spread mode for multi-index symbols
+- **Dark + light themes** — sun/moon toggle in the navbar, preference persisted to localStorage
 
 ### MCP Server
 10 tools for full ArcticDB CRUD via LLM:
@@ -167,7 +177,7 @@ Both the web UI and MCP server share `core/operations.py` — all ArcticDB acces
 ## Tech Stack
 
 - **Backend:** FastAPI, ArcticDB, pandas
-- **Frontend:** Jinja2 templates, HTMX, Bootstrap 5.3 (dark), Chart.js
+- **Frontend:** Jinja2 templates, HTMX, Bootstrap 5.3 with `data-bs-theme` dark/light switching, Chart.js, IBM Plex Sans + Mono
 - **MCP:** mcp package (FastMCP), stdio + SSE transport
 - **No JavaScript build step** — all frontend dependencies via CDN
 
