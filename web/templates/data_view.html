@@ -403,6 +403,25 @@
                     <span class="label">Back</span>
                     <input type="number" id="spread-rank2" class="form-control form-control-sm" value="2" min="1" max="24" style="width:55px;" onchange="onChartSettingChange()" title="Back leg (2=second-month)">
                 </span>
+                <span id="continuous-controls" class="group">
+                    <span class="label">Continuous</span>
+                    <select id="continuous-method" class="form-select form-select-sm" style="width:130px;" onchange="onChartSettingChange()" title="Spliced has roll-day jumps; back-adj removes them.">
+                        <option value="none">Unadjusted</option>
+                        <option value="back_diff" selected>Back-adj Δ</option>
+                        <option value="back_ratio">Back-adj ratio</option>
+                        <option value="perpetual">Perpetual</option>
+                    </select>
+                    <span class="label">Roll</span>
+                    <select id="roll-rule" class="form-select form-select-sm" style="width:100px;" onchange="onChartSettingChange()" title="When to switch from front to next contract.">
+                        <option value="expiry" selected>Expiry</option>
+                        <option value="calendar_5">−5d</option>
+                        <option value="calendar_10">−10d</option>
+                        <option value="calendar_20">−20d</option>
+                        {% if has_volume %}
+                        <option value="volume">Volume</option>
+                        {% endif %}
+                    </select>
+                </span>
             </div>
             {% endif %}
 
@@ -906,8 +925,10 @@
         const mode = document.getElementById("contract-mode").value;
         const singleCtrl = document.getElementById("single-rank-controls");
         const spreadCtrl = document.getElementById("spread-rank-controls");
+        const contCtrl = document.getElementById("continuous-controls");
         singleCtrl.style.display = mode === "single" ? "" : "none";
         spreadCtrl.style.display = (mode === "spread" || mode === "overlay") ? "" : "none";
+        if (contCtrl) contCtrl.style.display = mode === "spread" ? "none" : "";
         if (chartVisible) drawChart();
     }
 
@@ -933,6 +954,11 @@
             } else {
                 url += `&spread_rank1=${document.getElementById("spread-rank1").value}`;
                 url += `&spread_rank2=${document.getElementById("spread-rank2").value}`;
+            }
+            if (mode !== "spread") {
+                const contMethod = document.getElementById("continuous-method").value;
+                const rollRule = document.getElementById("roll-rule").value;
+                url += `&continuous_method=${contMethod}&roll_rule=${rollRule}`;
             }
         } else {
             const xCol = document.getElementById("chart-x").value;

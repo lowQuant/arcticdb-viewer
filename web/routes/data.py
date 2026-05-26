@@ -248,6 +248,7 @@ async def view_symbol(request: Request, lib: str, sym: str):
 
     cols_lower = {c.lower() for c in desc["columns"]}
     has_ohlc = all(k in cols_lower for k in ("open", "high", "low", "close"))
+    has_volume = "volume" in cols_lower
 
     # Detect MultiIndex for contract charting
     is_multiindex = False
@@ -267,6 +268,7 @@ async def view_symbol(request: Request, lib: str, sym: str):
         "description": desc,
         "page_size": DEFAULT_PAGE_SIZE,
         "has_ohlc": has_ohlc,
+        "has_volume": has_volume,
         "is_multiindex": is_multiindex,
         "index_names": index_names,
     })
@@ -391,6 +393,167 @@ def _compute_spread(df: pd.DataFrame, rank1: int, rank2: int, col: str = "close"
     spread = s1 - s2
     spread.name = f"spread_rank{rank1}_rank{rank2}_{col}"
     return spread
+
+
+def _build_continuous_series(
+    df: pd.DataFrame,
+    rank: int,
+    col: str = "close",
+    method: str = "back_diff",
+    roll_rule: str = "expiry",
+) -> pd.Series:
+    """Build a continuous futures series from per-contract data.
+
+    method:
+        'none'       — spliced/unadjusted (jumps at rolls)
+        'back_diff'  — back-adjusted by difference (preserves point P&L)
+        'back_ratio' — back-adjusted by ratio (preserves % returns)
+        'perpetual'  — constant-maturity blend of rank-1 and rank-2
+
+    roll_rule:
+        'expiry'     — switch when dte <= 0 (rank by dte ascending)
+        'calendar_N' — roll N business days before expiry (dte > N)
+        'volume'     — rank by volume descending (active contract)
+    """
+    if "dte" not in df.columns:
+        return _extract_contract_by_rank(df, rank, col)
+
+    if method == "perpetual":
+        return _build_perpetual_series(df, col, roll_rule)
+
+    calendar_offset = 0
+    if roll_rule.startswith("calendar_"):
+        try:
+            calendar_offset = int(roll_rule.split("_", 1)[1])
+        except (ValueError, IndexError):
+            calendar_offset = 0
+
+    use_volume = roll_rule == "volume" and "volume" in df.columns
+
+    dates = sorted(df.index.get_level_values(0).unique())
+    selections: list[tuple] = []
+    for date in dates:
+        try:
+            date_slice = df.loc[date]
+        except KeyError:
+            continue
+        if isinstance(date_slice, pd.Series):
+            if rank == 1 and col in date_slice.index and pd.notna(date_slice[col]):
+                selections.append((date, "_", float(date_slice[col])))
+            continue
+
+        valid = date_slice[date_slice["dte"] > 0]
+        if len(valid) == 0:
+            continue
+
+        if use_volume:
+            ranked = valid.sort_values("volume", ascending=False, na_position="last")
+        elif calendar_offset > 0:
+            filtered = valid[valid["dte"] > calendar_offset]
+            ranked = filtered.sort_values("dte") if len(filtered) >= rank else valid.sort_values("dte")
+        else:
+            ranked = valid.sort_values("dte")
+
+        if len(ranked) < rank:
+            continue
+        pick = ranked.iloc[rank - 1]
+        price = pick[col]
+        if pd.isna(price):
+            continue
+        selections.append((date, pick.name, float(price)))
+
+    if not selections:
+        return pd.Series([], dtype=float, name=f"cont{rank}_{col}_{method}")
+
+    dates_arr = [s[0] for s in selections]
+    contracts_arr = [s[1] for s in selections]
+    prices_arr = [s[2] for s in selections]
+    n = len(prices_arr)
+
+    if method == "none":
+        return pd.Series(prices_arr, index=dates_arr, name=f"cont{rank}_{col}_unadj")
+
+    # Walk backward, accumulating roll adjustments
+    adj = [0.0 if method == "back_diff" else 1.0] * n
+    for i in range(n - 1, 0, -1):
+        adj[i - 1] = adj[i]
+        if contracts_arr[i] == contracts_arr[i - 1]:
+            continue
+        new_today = prices_arr[i]
+        try:
+            raw = df.loc[(dates_arr[i], contracts_arr[i - 1]), col]
+            old_today = float(raw) if pd.notna(raw) else prices_arr[i - 1]
+        except (KeyError, TypeError):
+            old_today = prices_arr[i - 1]
+
+        if method == "back_diff":
+            adj[i - 1] = adj[i] + (new_today - old_today)
+        elif method == "back_ratio" and old_today > 0 and new_today > 0:
+            adj[i - 1] = adj[i] * (new_today / old_today)
+
+    if method == "back_diff":
+        result = [prices_arr[i] + adj[i] for i in range(n)]
+        name = f"cont{rank}_{col}_backdiff"
+    else:
+        result = [prices_arr[i] * adj[i] for i in range(n)]
+        name = f"cont{rank}_{col}_backratio"
+    return pd.Series(result, index=dates_arr, name=name)
+
+
+def _continuous_label(sym: str, rank: int, col: str, method: str) -> str:
+    suffix = {
+        "back_diff": " [adj-Δ]",
+        "back_ratio": " [adj-r]",
+        "perpetual": " [perp]",
+    }.get(method, "")
+    if method == "perpetual":
+        return f"{sym} {col}{suffix}"
+    return f"{sym}{rank} {col}{suffix}"
+
+
+def _build_perpetual_series(df: pd.DataFrame, col: str = "close", roll_rule: str = "calendar_5") -> pd.Series:
+    """Constant-maturity blend: w*front + (1-w)*deferred, w = min(1, dte_front / window)."""
+    window = 5
+    if roll_rule.startswith("calendar_"):
+        try:
+            window = max(1, int(roll_rule.split("_", 1)[1]))
+        except (ValueError, IndexError):
+            window = 5
+
+    dates = sorted(df.index.get_level_values(0).unique())
+    result: dict = {}
+    for date in dates:
+        try:
+            date_slice = df.loc[date]
+        except KeyError:
+            continue
+        if isinstance(date_slice, pd.Series):
+            if col in date_slice.index and pd.notna(date_slice[col]):
+                result[date] = float(date_slice[col])
+            continue
+
+        valid = date_slice[date_slice["dte"] > 0].sort_values("dte")
+        if len(valid) == 0:
+            continue
+        if len(valid) == 1:
+            v = valid.iloc[0][col]
+            if pd.notna(v):
+                result[date] = float(v)
+            continue
+
+        f_price, d_price = valid.iloc[0][col], valid.iloc[1][col]
+        if pd.isna(f_price) or pd.isna(d_price):
+            continue
+        front_dte = float(valid.iloc[0]["dte"])
+        if front_dte >= window:
+            w = 1.0
+        elif front_dte <= 0:
+            w = 0.0
+        else:
+            w = front_dte / window
+        result[date] = w * float(f_price) + (1 - w) * float(d_price)
+
+    return pd.Series(result, name=f"perpetual_{col}")
 
 
 def _compute_study(values: list, study_type: str, period: int) -> list:
@@ -559,6 +722,8 @@ async def get_chart(
     spread_rank2: int = 2,
     studies: str = "",
     period: str = "",
+    continuous_method: str = "none",
+    roll_rule: str = "expiry",
 ):
     try:
         df = ops.read_data(lib, sym)
@@ -585,9 +750,10 @@ async def get_chart(
 
         # Contract mode: extract single rank or spread
         if is_multi and contract_mode == "single":
-            series = _extract_contract_by_rank(df, contract_rank, contract_col)
+            series = _build_continuous_series(df, contract_rank, contract_col, continuous_method, roll_rule)
             series = _apply_period_to_series(series)
-            datasets = [{"label": f"{sym}{contract_rank} {contract_col}", "data": _series_data(series)}]
+            label = _continuous_label(sym, contract_rank, contract_col, continuous_method)
+            datasets = [{"label": label, "data": _series_data(series)}]
             study_datasets = _build_study_datasets(datasets[0]["data"], studies)
             datasets.extend(study_datasets)
 
@@ -620,12 +786,12 @@ async def get_chart(
             datasets = []
             x_values = None
             for rank in ranks:
-                series = _extract_contract_by_rank(df, rank, contract_col)
+                series = _build_continuous_series(df, rank, contract_col, continuous_method, roll_rule)
                 series = _apply_period_to_series(series)
                 if x_values is None:
                     x_values = _fmt_dates(series.index)
                 datasets.append({
-                    "label": f"{sym}{rank} {contract_col}",
+                    "label": _continuous_label(sym, rank, contract_col, continuous_method),
                     "data": _series_data(series),
                 })
             if x_values is None:

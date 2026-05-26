@@ -30,7 +30,7 @@ Browse libraries and symbols, view and edit DataFrames with pagination, filterin
   - **Limit rows** — show first/last N rows
 - **Cell editing** — double-click to edit, Enter to confirm with undo option, ESC to cancel
 - **Row management** — add new rows, select and delete multiple rows
-- **Charting** — line, bar, scatter, and candlestick charts with subplot support (e.g. price + volume), SMA/EMA studies, drag-to-zoom, contract-spread mode for multi-index symbols
+- **Charting** — line, bar, scatter, and candlestick charts with subplot support (e.g. price + volume), SMA/EMA studies, drag-to-zoom, and a contract-aware mode for multi-index `(date, contract)` symbols: single rank, overlay, spread, plus continuous-series methods (unadjusted, back-adjusted Δ, back-adjusted ratio, perpetual) with configurable roll rules (expiry, calendar offset, volume crossover)
 - **Dark + light themes** — sun/moon toggle in the navbar, preference persisted to localStorage
 
 ### MCP Server
