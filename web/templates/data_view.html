@@ -867,6 +867,11 @@
         if (sidePaneOpen) {
             loadSidePaneDefault();
         }
+        // Main pane width just changed — let Chart.js re-measure.
+        requestAnimationFrame(() => {
+            if (window.chartInstance) window.chartInstance.resize();
+            (window.subplotInstances || []).forEach(c => c.resize());
+        });
     }
 
     function loadSidePaneDefault() {

@@ -18,11 +18,9 @@
     const subplotsData = {{ subplots | safe }};
     const panelsContainer = document.getElementById("chart-panels");
 
-    // Show point count
     const totalPoints = mainData.datasets.reduce((s, d) => s + d.data.filter(v => v !== null).length, 0);
     document.getElementById("chart-point-count").textContent = totalPoints + " data points";
 
-    // Create subplot canvases
     subplotsData.forEach((sp, i) => {
         const div = document.createElement("div");
         div.style.position = "relative";
@@ -34,8 +32,14 @@
         panelsContainer.insertBefore(div, panelsContainer.lastElementChild);
     });
 
-    renderChartPanel("{{ chart_id }}", mainData, true);
-    subplotsData.forEach((sp, i) => renderChartPanel("subplot-" + i, sp, false));
+    // Defer chart creation until after the browser has done a layout pass.
+    // Without this, Chart.js can measure the parent before the surrounding
+    // flex layout settles, render at the wrong width, then shrink on the
+    // next resize observer tick.
+    requestAnimationFrame(() => {
+        renderChartPanel("{{ chart_id }}", mainData, true);
+        subplotsData.forEach((sp, i) => renderChartPanel("subplot-" + i, sp, false));
+    });
 })();
 
 window.chartZoomReset = function() {
