@@ -1,0 +1,35 @@
+<div class="d-flex align-items-center justify-content-between mb-2">
+    <span class="small fw-bold">
+        <i class="bi bi-info-circle"></i> {{ symbol }} metadata
+        <span class="text-muted fw-normal">(universe/{{ universe_symbol }})</span>
+    </span>
+    <a href="#" class="btn btn-sm btn-outline-secondary py-0"
+       hx-get="/api/sidepane/libraries"
+       hx-target="#sidepane-content"
+       hx-swap="innerHTML"
+       title="Browse ArcticDB">
+        <i class="bi bi-database"></i> Browse
+    </a>
+</div>
+<table class="table table-dark table-sm table-striped mb-0" style="font-size: 0.8rem;">
+    <tbody>
+        {% for key, value in metadata.items() %}
+        <tr>
+            <td class="text-muted text-nowrap" style="width: 40%;">{{ key }}</td>
+            <td>
+                {% if value is number %}
+                    {% if value == value | int and value | abs < 1000000 %}
+                        {{ value | int }}
+                    {% else %}
+                        {{ "%.4f" % value if value | abs < 1 else "%.2f" % value if value is number else value }}
+                    {% endif %}
+                {% elif value == true or value == false %}
+                    <span class="badge {{ 'bg-success' if value else 'bg-secondary' }}">{{ value }}</span>
+                {% else %}
+                    {{ value }}
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

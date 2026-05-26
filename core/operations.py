@@ -45,10 +45,23 @@ def get_description(library: str, symbol: str) -> dict[str, Any]:
     index_info = None
     if desc.index:
         idx = desc.index[0]
-        index_info = {
-            "name": idx.name,
-            "dtype": str(idx.dtype),
-        }
+        # Handle both single index and MultiIndex descriptors
+        if hasattr(idx, 'name'):
+            index_info = {
+                "name": idx.name,
+                "dtype": str(idx.dtype),
+            }
+        elif isinstance(idx, (list, tuple)):
+            # MultiIndex: idx might be a list of NameWithDType
+            index_info = {
+                "name": idx[0].name if hasattr(idx[0], 'name') else str(idx[0]),
+                "dtype": str(idx[0].dtype) if hasattr(idx[0], 'dtype') else "unknown",
+            }
+        else:
+            index_info = {
+                "name": str(idx),
+                "dtype": "unknown",
+            }
     return {
         "rows": desc.row_count,
         "columns": col_names,

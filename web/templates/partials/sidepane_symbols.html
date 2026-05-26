@@ -1,0 +1,19 @@
+<div class="d-flex align-items-center mb-2">
+    <a href="#" class="btn btn-sm btn-outline-secondary me-2"
+       hx-get="/api/sidepane/libraries"
+       hx-target="#sidepane-content"
+       hx-swap="innerHTML">
+        <i class="bi bi-arrow-left"></i>
+    </a>
+    <span class="small fw-bold"><i class="bi bi-database"></i> {{ library }}</span>
+</div>
+<div class="list-group list-group-flush">
+    {% for sym in symbols %}
+    <a href="#" class="list-group-item list-group-item-action list-group-item-dark py-1 small"
+       hx-get="/api/sidepane/data/{{ library }}/{{ sym }}?page=0&page_size=25"
+       hx-target="#sidepane-content"
+       hx-swap="innerHTML">
+        <i class="bi bi-table"></i> {{ sym }}
+    </a>
+    {% endfor %}
+</div>

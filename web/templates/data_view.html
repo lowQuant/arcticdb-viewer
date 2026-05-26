@@ -2,6 +2,10 @@
 {% block title %}{{ symbol }} - ADBView{% endblock %}
 
 {% block content %}
+<div class="d-flex" id="main-layout">
+<!-- Main pane -->
+<div class="flex-grow-1" id="main-pane" style="min-width: 0;">
+
 <!-- Breadcrumb -->
 <nav aria-label="breadcrumb" class="mb-3">
     <ol class="breadcrumb">
@@ -24,7 +28,10 @@
         <span class="badge bg-info">{{ description.date_range[0][:10] }} to {{ description.date_range[1][:10] }}</span>
         {% endif %}
     </div>
-    <div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-secondary" onclick="toggleSidePane()" title="Toggle side pane">
+            <i class="bi bi-layout-sidebar-reverse"></i> Side pane
+        </button>
         <button class="btn btn-sm btn-outline-danger"
                 hx-delete="/libraries/{{ library }}/symbols/{{ symbol }}"
                 hx-confirm="Delete symbol '{{ symbol }}'? This cannot be undone."
@@ -108,7 +115,14 @@
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <span class="small fw-bold"><i class="bi bi-graph-up"></i> Main chart</span>
                 <div class="d-flex gap-2 align-items-center">
-                    <label class="small text-muted mb-0">X</label>
+                    {% if is_multiindex %}
+                    <label class="small text-muted mb-0">Mode</label>
+                    <select id="chart-source" class="form-select form-select-sm" style="width:130px;" onchange="onChartSourceChange()">
+                        <option value="standard" selected>Standard</option>
+                        <option value="contract">Contract</option>
+                    </select>
+                    {% endif %}
+                    <label class="small text-muted mb-0" id="x-label">X</label>
                     <select id="chart-x" class="form-select form-select-sm" style="width:130px;" onchange="onChartSettingChange()">
                         <option value="__index__">{{ description.index.name or 'index' }}</option>
                         {% for col in description.columns %}
@@ -124,10 +138,48 @@
                         <option value="bar">Bar</option>
                         <option value="scatter">Scatter</option>
                     </select>
+                    <label class="small text-muted mb-0">Period</label>
+                    <select id="chart-period" class="form-select form-select-sm" style="width:80px;" onchange="onChartSettingChange()">
+                        <option value="" selected>Daily</option>
+                        <option value="W">Weekly</option>
+                        <option value="M">Monthly</option>
+                        <option value="Q">Quarterly</option>
+                        <option value="Y">Yearly</option>
+                    </select>
                     <button class="btn btn-sm btn-outline-secondary" onclick="toggleChart()"><i class="bi bi-x-lg"></i></button>
                 </div>
             </div>
-            <!-- Y column checkboxes (hidden for candlestick) -->
+
+            {% if is_multiindex %}
+            <!-- Contract mode controls (hidden by default, shown when chart source = contract) -->
+            <div id="contract-controls" class="align-items-center gap-2 mb-2 flex-wrap d-none">
+                <span class="small text-muted">Contract:</span>
+                <select id="contract-mode" class="form-select form-select-sm" style="width:120px;" onchange="onContractModeChange()">
+                    <option value="single">Single rank</option>
+                    <option value="overlay">Overlay</option>
+                    <option value="spread" selected>Spread</option>
+                </select>
+                <label class="small text-muted mb-0">Column:</label>
+                <select id="contract-col" class="form-select form-select-sm" style="width:110px;" onchange="onChartSettingChange()">
+                    {% for col in description.columns %}
+                    <option value="{{ col }}" {% if col == 'close' %}selected{% endif %}>{{ col }}</option>
+                    {% endfor %}
+                </select>
+                <span id="single-rank-controls">
+                    <label class="small text-muted mb-0">{{ symbol }}</label>
+                    <input type="number" id="contract-rank" class="form-control form-control-sm" value="1" min="1" max="24" style="width:55px;" onchange="onChartSettingChange()" title="1=front-month, 2=second-month, ...">
+                </span>
+                <span id="spread-rank-controls">
+                    <label class="small text-muted mb-0">{{ symbol }}</label>
+                    <input type="number" id="spread-rank1" class="form-control form-control-sm" value="1" min="1" max="24" style="width:55px;" onchange="onChartSettingChange()" title="Front leg (1=front-month)">
+                    <span class="small text-muted mx-1">-</span>
+                    <label class="small text-muted mb-0">{{ symbol }}</label>
+                    <input type="number" id="spread-rank2" class="form-control form-control-sm" value="2" min="1" max="24" style="width:55px;" onchange="onChartSettingChange()" title="Back leg (2=second-month)">
+                </span>
+            </div>
+            {% endif %}
+
+            <!-- Y column checkboxes (for standard mode, hidden for candlestick) -->
             <div id="chart-y-section" class="d-flex align-items-center gap-1 flex-wrap">
                 <span class="small text-muted me-1">Y columns:</span>
                 <div id="chart-y-checks" class="d-flex gap-1 flex-wrap">
@@ -140,6 +192,29 @@
                     {% endfor %}
                 </div>
             </div>
+
+            <!-- Studies -->
+            <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
+                <span class="small text-muted">Studies:</span>
+                <div id="study-list" class="d-flex gap-1 flex-wrap"></div>
+                <div class="btn-group btn-group-sm">
+                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                        <i class="bi bi-plus-lg"></i> Add study
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li><a class="dropdown-item" href="#" onclick="addStudy('sma', 20)">SMA (20)</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="addStudy('sma', 50)">SMA (50)</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="addStudy('sma', 200)">SMA (200)</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="#" onclick="addStudy('ema', 12)">EMA (12)</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="addStudy('ema', 26)">EMA (26)</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="addStudy('ema', 50)">EMA (50)</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="#" onclick="promptCustomStudy()">Custom...</a></li>
+                    </ul>
+                </div>
+            </div>
+
             <!-- Subplots -->
             <div id="subplot-configs" class="mt-2"></div>
             <button class="btn btn-sm btn-outline-secondary mt-1" onclick="addSubplot()">
@@ -203,6 +278,23 @@
         <div class="spinner-border spinner-border-sm" role="status"></div> Loading data...
     </div>
 </div>
+
+</div><!-- end main-pane -->
+
+<!-- Side pane (hidden by default) -->
+<div id="side-pane" class="border-start ps-3 ms-3" style="display:none; width:420px; min-width:420px; max-height: calc(100vh - 80px); overflow-y: auto;">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="small fw-bold"><i class="bi bi-layout-sidebar-reverse"></i> Side pane</span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="toggleSidePane()"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div id="sidepane-content">
+        <div class="text-center py-3">
+            <div class="spinner-border spinner-border-sm" role="status"></div> Loading libraries...
+        </div>
+    </div>
+</div>
+
+</div><!-- end main-layout -->
 {% endblock %}
 
 {% block scripts %}
@@ -212,9 +304,12 @@
     const SYM = "{{ symbol }}";
     const ALL_COLUMNS = {{ description.columns | tojson }};
     const INDEX_NAME = "{{ description.index.name if description.index else '' }}";
+    const IS_MULTIINDEX = {{ 'true' if is_multiindex else 'false' }};
+    const INDEX_NAMES = {{ index_names | tojson if index_names else '[]' }};
 
     let chartInstance = null;
     let chartVisible = false;
+    let activeStudies = []; // [{type: "sma", period: 20}, ...]
 
     // ── Current query state ──
     let currentQuery = {};
@@ -232,7 +327,17 @@
 
     // ── Column options HTML ──
     function colOptionsHTML(includeIndex) {
-        let html = includeIndex && INDEX_NAME ? `<option value="__index__">${INDEX_NAME} (index)</option>` : '';
+        let html = '';
+        if (includeIndex) {
+            if (IS_MULTIINDEX && INDEX_NAMES.length > 0) {
+                // Expose each MultiIndex level as a filterable option
+                INDEX_NAMES.forEach((name, i) => {
+                    html += `<option value="__index_${i}__">${name} (index ${i})</option>`;
+                });
+            } else if (INDEX_NAME) {
+                html += `<option value="__index__">${INDEX_NAME} (index)</option>`;
+            }
+        }
         html += ALL_COLUMNS.map(c => `<option value="${c}">${c}</option>`).join('');
         return html;
     }
@@ -243,14 +348,14 @@
             <div class="op-row d-flex gap-2 align-items-center mb-1" data-type="filter">
                 <span class="badge bg-primary">Filter</span>
                 <select class="form-select form-select-sm op-col" style="width:140px;">${colOptionsHTML(true)}</select>
-                <select class="form-select form-select-sm op-operator" style="width:140px;">
-                    <option value="eq">= equals</option>
-                    <option value="neq">!= not equals</option>
-                    <option value="gt">&gt; greater than</option>
-                    <option value="gte">&gt;= greater or equal</option>
-                    <option value="lt">&lt; less than</option>
-                    <option value="lte">&lt;= less or equal</option>
-                    <option value="between">between (a,b)</option>
+                <select class="form-select form-select-sm op-operator" style="width:110px;">
+                    <option value="eq">=</option>
+                    <option value="neq">!=</option>
+                    <option value="gt">&gt;</option>
+                    <option value="gte">&gt;=</option>
+                    <option value="lt">&lt;</option>
+                    <option value="lte">&lt;=</option>
+                    <option value="between">between</option>
                     <option value="contains">contains</option>
                     <option value="startswith">starts with</option>
                     <option value="endswith">ends with</option>
@@ -505,6 +610,12 @@
     }
 
     // ── Chart ──
+    function isContractMode() {
+        if (!IS_MULTIINDEX) return false;
+        const src = document.getElementById("chart-source");
+        return src && src.value === "contract";
+    }
+
     function toggleChart() {
         const section = document.getElementById("chart-section");
         chartVisible = section.style.display === "none";
@@ -515,6 +626,7 @@
         if (chartVisible) {
             updateChartTypeUI();
             autoSelectYColumns();
+            if (IS_MULTIINDEX) onChartSourceChange();
             drawChart();
         }
     }
@@ -532,19 +644,61 @@
     function autoSelectYColumns() {
         const checked = getSelectedYCols();
         if (checked.length === 0) {
-            const checkboxes = document.querySelectorAll(".chart-y-check");
-            let count = 0;
-            checkboxes.forEach(cb => {
-                if (count < 2) { cb.checked = true; count++; }
-            });
+            // Prefer "close" if available, else first numeric column
+            const closeCb = document.getElementById("cy-close");
+            if (closeCb) {
+                closeCb.checked = true;
+            } else {
+                const checkboxes = document.querySelectorAll(".chart-y-check");
+                if (checkboxes.length > 0) checkboxes[0].checked = true;
+            }
         }
     }
 
     function updateChartTypeUI() {
         const type = document.getElementById("chart-type").value;
         const ySection = document.getElementById("chart-y-section");
-        // Hide Y column checkboxes for candlestick (auto-detects OHLC)
-        ySection.style.display = type === "candlestick" ? "none" : "";
+        if (ySection) {
+            const showY = !isContractMode() && type !== "candlestick";
+            ySection.classList.toggle("d-none", !showY);
+            ySection.classList.toggle("d-flex", showY);
+        }
+    }
+
+    // ── Chart source toggle (Standard / Contract) for MultiIndex ──
+    function onChartSourceChange() {
+        if (!IS_MULTIINDEX) return;
+        const contract = isContractMode();
+        // Toggle contract controls using Bootstrap d-none/d-flex
+        const contractCtrl = document.getElementById("contract-controls");
+        if (contractCtrl) {
+            contractCtrl.classList.toggle("d-none", !contract);
+            contractCtrl.classList.toggle("d-flex", contract);
+        }
+        // Toggle standard controls (X selector, Y checkboxes)
+        const xLabel = document.getElementById("x-label");
+        const xSelect = document.getElementById("chart-x");
+        if (xLabel) xLabel.style.display = contract ? "none" : "";
+        if (xSelect) xSelect.style.display = contract ? "none" : "";
+        // Y section
+        updateChartTypeUI();
+        if (contract) {
+            onContractModeChange();
+        } else {
+            autoSelectYColumns();
+        }
+        if (chartVisible) drawChart();
+    }
+
+    // ── Contract mode (MultiIndex) ──
+    function onContractModeChange() {
+        if (!IS_MULTIINDEX) return;
+        const mode = document.getElementById("contract-mode").value;
+        const singleCtrl = document.getElementById("single-rank-controls");
+        const spreadCtrl = document.getElementById("spread-rank-controls");
+        singleCtrl.style.display = mode === "single" ? "" : "none";
+        spreadCtrl.style.display = (mode === "spread" || mode === "overlay") ? "" : "none";
+        if (chartVisible) drawChart();
     }
 
     function onChartSettingChange() {
@@ -554,23 +708,43 @@
 
     function drawChart() {
         const chartType = document.getElementById("chart-type").value;
-        const xCol = document.getElementById("chart-x").value;
+        const useContract = isContractMode();
+        const period = document.getElementById("chart-period").value;
 
-        if (chartType !== "candlestick") {
-            const yCols = getSelectedYCols();
-            if (yCols.length === 0) {
-                destroyAllCharts();
-                document.getElementById("chart-container").innerHTML =
-                    '<p class="text-muted text-center py-3">Select Y columns to draw a chart.</p>';
-                return;
+        let url = `/api/chart/${LIB}/${SYM}?chart_type=${chartType}`;
+        if (period) url += `&period=${period}`;
+
+        if (useContract) {
+            const mode = document.getElementById("contract-mode").value;
+            const col = document.getElementById("contract-col").value;
+            url += `&contract_mode=${mode}&contract_col=${encodeURIComponent(col)}`;
+            if (mode === "single") {
+                url += `&contract_rank=${document.getElementById("contract-rank").value}`;
+            } else {
+                url += `&spread_rank1=${document.getElementById("spread-rank1").value}`;
+                url += `&spread_rank2=${document.getElementById("spread-rank2").value}`;
+            }
+        } else {
+            const xCol = document.getElementById("chart-x").value;
+            url += `&x_col=${encodeURIComponent(xCol)}`;
+            if (chartType !== "candlestick") {
+                const yCols = getSelectedYCols();
+                if (yCols.length === 0) {
+                    destroyAllCharts();
+                    document.getElementById("chart-container").innerHTML =
+                        '<p class="text-muted text-center py-3">Select Y columns to draw a chart.</p>';
+                    return;
+                }
+                url += `&y_cols=${encodeURIComponent(yCols.join(','))}`;
             }
         }
 
-        let url = `/api/chart/${LIB}/${SYM}?x_col=${encodeURIComponent(xCol)}&chart_type=${chartType}`;
-        if (chartType !== "candlestick") {
-            url += `&y_cols=${encodeURIComponent(getSelectedYCols().join(','))}`;
-        }
         url += buildQueryParam();
+
+        // Studies
+        if (activeStudies.length > 0) {
+            url += `&studies=${encodeURIComponent(JSON.stringify(activeStudies))}`;
+        }
 
         // Subplots
         const spConfigs = getSubplotConfigs();
@@ -584,8 +758,13 @@
 
     function autoUpdateChart() {
         if (!chartVisible) return;
-        const chartType = document.getElementById("chart-type").value;
 
+        if (isContractMode()) {
+            drawChart();
+            return;
+        }
+
+        const chartType = document.getElementById("chart-type").value;
         if (chartType === "candlestick") {
             drawChart();
             return;
@@ -606,6 +785,42 @@
             document.getElementById("chart-container").innerHTML =
                 '<p class="text-muted text-center py-3">Selected columns no longer in data. Pick new Y columns.</p>';
         }
+    }
+
+    // ── Studies ──
+    function addStudy(type, period) {
+        activeStudies.push({ type, period });
+        renderStudyBadges();
+        if (chartVisible) drawChart();
+    }
+
+    function removeStudy(idx) {
+        activeStudies.splice(idx, 1);
+        renderStudyBadges();
+        if (chartVisible) drawChart();
+    }
+
+    function renderStudyBadges() {
+        const container = document.getElementById("study-list");
+        container.innerHTML = activeStudies.map((s, i) =>
+            `<span class="badge bg-info me-1">${s.type.toUpperCase()}(${s.period})
+                <button class="btn-close btn-close-white ms-1" style="font-size:0.5em; vertical-align:middle;"
+                        onclick="removeStudy(${i})"></button>
+            </span>`
+        ).join('');
+    }
+
+    function promptCustomStudy() {
+        const input = prompt("Enter study (e.g. SMA 20 or EMA 50):");
+        if (!input) return;
+        const parts = input.trim().split(/\s+/);
+        if (parts.length !== 2) { showToast("Format: SMA 20 or EMA 50", "error"); return; }
+        const type = parts[0].toLowerCase();
+        const period = parseInt(parts[1]);
+        if (!["sma", "ema"].includes(type) || isNaN(period) || period < 1) {
+            showToast("Invalid study. Use SMA or EMA with a number.", "error"); return;
+        }
+        addStudy(type, period);
     }
 
     // ── Subplots ──
@@ -641,6 +856,34 @@
             });
         });
         return configs;
+    }
+
+    // ── Side pane ──
+    let sidePaneOpen = false;
+    function toggleSidePane() {
+        const pane = document.getElementById("side-pane");
+        sidePaneOpen = !sidePaneOpen;
+        pane.style.display = sidePaneOpen ? "" : "none";
+        if (sidePaneOpen) {
+            loadSidePaneDefault();
+        }
+    }
+
+    function loadSidePaneDefault() {
+        // Try to load universe metadata first, fall back to browse
+        fetch(`/api/sidepane/metadata/${LIB}/${SYM}`)
+            .then(r => {
+                if (r.ok) return r.text();
+                throw new Error('no metadata');
+            })
+            .then(html => {
+                document.getElementById("sidepane-content").innerHTML = html;
+                // Re-process any htmx attributes in the new content
+                htmx.process(document.getElementById("sidepane-content"));
+            })
+            .catch(() => {
+                htmx.ajax("GET", "/api/sidepane/libraries", "#sidepane-content");
+            });
     }
 
     // ── Cell editing with confirmation ──

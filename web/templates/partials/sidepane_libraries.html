@@ -1,0 +1,10 @@
+<div class="list-group list-group-flush">
+    {% for lib in libraries %}
+    <a href="#" class="list-group-item list-group-item-action list-group-item-dark py-1 small"
+       hx-get="/api/sidepane/symbols/{{ lib }}"
+       hx-target="#sidepane-content"
+       hx-swap="innerHTML">
+        <i class="bi bi-database"></i> {{ lib }}
+    </a>
+    {% endfor %}
+</div>

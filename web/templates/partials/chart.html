@@ -1,45 +1,83 @@
 <div id="chart-panels">
-    <div style="height:350px; position:relative;">
+    <div style="position:relative; height:400px;">
         <canvas id="{{ chart_id }}"></canvas>
     </div>
+    <div class="d-flex justify-content-between align-items-center mt-1 px-1">
+        <span class="small text-muted" id="chart-point-count"></span>
+        <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary py-0 px-2" onclick="chartZoomReset()" title="Reset zoom">
+                <i class="bi bi-arrows-angle-expand"></i> Reset
+            </button>
+        </div>
+    </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
 <script>
 (function() {
     const mainData = {{ main_chart | safe }};
     const subplotsData = {{ subplots | safe }};
     const panelsContainer = document.getElementById("chart-panels");
 
+    // Show point count
+    const totalPoints = mainData.datasets.reduce((s, d) => s + d.data.filter(v => v !== null).length, 0);
+    document.getElementById("chart-point-count").textContent = totalPoints + " data points";
+
     // Create subplot canvases
     subplotsData.forEach((sp, i) => {
         const div = document.createElement("div");
-        div.style.height = "180px";
         div.style.position = "relative";
+        div.style.height = "180px";
         div.style.marginTop = "4px";
         const canvas = document.createElement("canvas");
         canvas.id = "subplot-" + i;
         div.appendChild(canvas);
-        panelsContainer.appendChild(div);
+        panelsContainer.insertBefore(div, panelsContainer.lastElementChild);
     });
 
     renderChartPanel("{{ chart_id }}", mainData, true);
     subplotsData.forEach((sp, i) => renderChartPanel("subplot-" + i, sp, false));
 })();
 
+window.chartZoomReset = function() {
+    if (window.chartInstance) window.chartInstance.resetZoom();
+};
+
 function renderChartPanel(canvasId, chartData, isMain) {
     const ctx = document.getElementById(canvasId).getContext("2d");
     const colors = ["#0d6efd","#198754","#dc3545","#ffc107","#0dcaf0","#6f42c1","#fd7e14","#20c997"];
+    const studyColors = ["#ff6384","#36a2eb","#ffce56","#4bc0c0","#9966ff","#ff9f40"];
     const type = chartData.chart_type;
     const upColor = "#198754";
     const downColor = "#dc3545";
     const upBg = "#19875488";
     const downBg = "#dc354588";
+    const n = chartData.x_values.length;
+
+    // Determine how many x-axis labels to show based on data density
+    const maxTicks = Math.min(20, Math.max(6, Math.floor(n / 30)));
+
+    // Common zoom/pan config — drag to zoom, shift+drag to pan
+    const zoomConfig = {
+        zoom: {
+            wheel: { enabled: false },
+            pinch: { enabled: true },
+            drag: { enabled: true, backgroundColor: 'rgba(13,110,253,0.15)', borderColor: '#0d6efd', borderWidth: 1 },
+            mode: 'x',
+        },
+        pan: {
+            enabled: true,
+            mode: 'x',
+        },
+        limits: {
+            x: { minRange: 5 },
+        },
+    };
 
     let chart;
 
     if (type === "candlestick") {
         const ohlcData = chartData.datasets[0].data;
 
-        // Custom candlestick plugin
         const candlestickPlugin = {
             id: 'candlestick',
             afterDatasetsDraw(chart) {
@@ -53,7 +91,6 @@ function renderChartPanel(canvasId, chartData, isMain) {
                     const cx = meta.data[i].x;
                     const isUp = d.c >= d.o;
 
-                    // Wick (high to low)
                     ctx.beginPath();
                     ctx.strokeStyle = isUp ? upColor : downColor;
                     ctx.lineWidth = wickWidth;
@@ -61,7 +98,6 @@ function renderChartPanel(canvasId, chartData, isMain) {
                     ctx.lineTo(cx, y.getPixelForValue(d.l));
                     ctx.stroke();
 
-                    // Body (open to close)
                     const bodyTop = y.getPixelForValue(Math.max(d.o, d.c));
                     const bodyBot = y.getPixelForValue(Math.min(d.o, d.c));
                     const bodyHeight = Math.max(1, bodyBot - bodyTop);
@@ -74,7 +110,6 @@ function renderChartPanel(canvasId, chartData, isMain) {
             }
         };
 
-        // Use invisible scatter points for positioning + tooltip
         chart = new Chart(ctx, {
             type: "scatter",
             data: {
@@ -94,12 +129,11 @@ function renderChartPanel(canvasId, chartData, isMain) {
                         type: "linear",
                         title: { display: isMain, text: chartData.x_label },
                         ticks: {
-                            maxTicksLimit: 15,
+                            maxTicksLimit: maxTicks,
                             callback: function(val) {
                                 const idx = Math.round(val);
                                 if (idx >= 0 && idx < chartData.x_values.length) {
-                                    const lbl = chartData.x_values[idx];
-                                    return lbl.length > 10 ? lbl.substring(0, 10) : lbl;
+                                    return chartData.x_values[idx];
                                 }
                                 return '';
                             }
@@ -115,6 +149,7 @@ function renderChartPanel(canvasId, chartData, isMain) {
                 },
                 plugins: {
                     legend: { display: false },
+                    zoom: zoomConfig,
                     tooltip: {
                         callbacks: {
                             title: function(items) {
@@ -135,18 +170,49 @@ function renderChartPanel(canvasId, chartData, isMain) {
         });
     } else {
         // Line / bar / scatter
+        let datasetIdx = 0;
+        let studyIdx = 0;
+
+        const chartDatasets = chartData.datasets.map((ds) => {
+            const isStudy = ds.is_study === true;
+            let config;
+
+            if (isStudy) {
+                const sColor = studyColors[studyIdx % studyColors.length];
+                config = {
+                    label: ds.label,
+                    data: ds.data,
+                    borderColor: sColor,
+                    backgroundColor: "transparent",
+                    borderDash: [8, 4],
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.2,
+                    order: 10,
+                };
+                studyIdx++;
+            } else {
+                const color = colors[datasetIdx % colors.length];
+                config = {
+                    label: ds.label,
+                    data: ds.data,
+                    borderColor: color,
+                    backgroundColor: type === "bar" ? color + "88" : "transparent",
+                    borderWidth: type === "line" ? 2 : 1,
+                    pointRadius: type === "scatter" ? 3 : 0,
+                    tension: 0.1,
+                    order: 0,
+                };
+                datasetIdx++;
+            }
+            return config;
+        });
+
         chart = new Chart(ctx, {
             type: type,
             data: {
                 labels: chartData.x_values,
-                datasets: chartData.datasets.map((ds, i) => ({
-                    label: ds.label,
-                    data: ds.data,
-                    borderColor: colors[i % colors.length],
-                    backgroundColor: type === "bar" ? colors[i % colors.length] + "88" : "transparent",
-                    pointRadius: type === "scatter" ? 3 : 0,
-                    tension: 0.1,
-                })),
+                datasets: chartDatasets,
             },
             options: {
                 responsive: true,
@@ -154,10 +220,17 @@ function renderChartPanel(canvasId, chartData, isMain) {
                 scales: {
                     x: {
                         title: { display: isMain, text: chartData.x_label },
-                        ticks: { maxTicksLimit: 20 },
+                        ticks: {
+                            maxTicksLimit: maxTicks,
+                            maxRotation: 45,
+                            autoSkip: true,
+                        },
                     },
                 },
-                plugins: { legend: { position: "top" } },
+                plugins: {
+                    legend: { position: "top" },
+                    zoom: zoomConfig,
+                },
                 interaction: { mode: "index", intersect: false },
             },
         });
