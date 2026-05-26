@@ -2,22 +2,35 @@
 {% block title %}Libraries - arcticdb-viewer{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-lg-8">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4 class="mb-0"><i class="bi bi-collection"></i> Libraries</h4>
+<div style="max-width: 1100px;">
+
+    <div class="page-head">
+        <div>
+            <div class="eyebrow mb-1">Workspace</div>
+            <h4><i class="bi bi-stack"></i> Libraries</h4>
+        </div>
+        <div class="page-head-meta">
             <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#create-form">
-                <i class="bi bi-plus-lg"></i> New Library
+                <i class="bi bi-plus-lg"></i> New library
             </button>
         </div>
+    </div>
 
-        <!-- Create library form -->
-        <div class="collapse mb-3" id="create-form">
-            <div class="card card-body bg-dark border">
+    <!-- Create library form (collapsible) -->
+    <div class="collapse mb-3" id="create-form">
+        <div class="qt-panel">
+            <div class="qt-panel-head">
+                <span class="qt-panel-head-title"><i class="bi bi-plus-circle"></i> Create library</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#create-form">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            <div class="qt-panel-body">
                 <form hx-post="/libraries" hx-target="#library-list" hx-swap="innerHTML"
                       hx-on::after-request="if(event.detail.successful) this.reset()">
                     <div class="input-group">
-                        <input type="text" name="name" class="form-control" placeholder="Library name" required>
+                        <input type="text" name="name" class="form-control" placeholder="library_name" required
+                               style="font-family: var(--mono);">
                         <button type="submit" class="btn btn-primary">
                             <i class="bi bi-plus-lg"></i> Create
                         </button>
@@ -25,11 +38,11 @@
                 </form>
             </div>
         </div>
+    </div>
 
-        <!-- Library list -->
-        <div id="library-list">
-            {% include "partials/library_list.html" %}
-        </div>
+    <!-- Library list -->
+    <div id="library-list">
+        {% include "partials/library_list.html" %}
     </div>
 </div>
 {% endblock %}

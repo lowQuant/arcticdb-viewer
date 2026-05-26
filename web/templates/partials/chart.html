@@ -2,11 +2,12 @@
     <div style="position:relative; height:400px;">
         <canvas id="{{ chart_id }}"></canvas>
     </div>
-    <div class="d-flex justify-content-between align-items-center mt-1 px-1">
-        <span class="small text-muted" id="chart-point-count"></span>
-        <div class="btn-group btn-group-sm">
-            <button class="btn btn-outline-secondary py-0 px-2" onclick="chartZoomReset()" title="Reset zoom">
-                <i class="bi bi-arrows-angle-expand"></i> Reset
+    <div class="d-flex justify-content-between align-items-center mt-2 px-1">
+        <span class="label-mono" id="chart-point-count"></span>
+        <div class="d-flex gap-1 align-items-center">
+            <span class="label-mono" style="color: var(--ink-4);">Drag to zoom · Shift-drag to pan</span>
+            <button class="btn btn-sm btn-outline-secondary" onclick="chartZoomReset()" title="Reset zoom">
+                <i class="bi bi-arrows-angle-contract"></i> Reset
             </button>
         </div>
     </div>
@@ -19,23 +20,21 @@
     const panelsContainer = document.getElementById("chart-panels");
 
     const totalPoints = mainData.datasets.reduce((s, d) => s + d.data.filter(v => v !== null).length, 0);
-    document.getElementById("chart-point-count").textContent = totalPoints + " data points";
+    document.getElementById("chart-point-count").textContent = totalPoints.toLocaleString() + " data points";
 
     subplotsData.forEach((sp, i) => {
         const div = document.createElement("div");
         div.style.position = "relative";
         div.style.height = "180px";
-        div.style.marginTop = "4px";
+        div.style.marginTop = "8px";
+        div.style.paddingTop = "8px";
+        div.style.borderTop = "1px solid var(--line-1)";
         const canvas = document.createElement("canvas");
         canvas.id = "subplot-" + i;
         div.appendChild(canvas);
         panelsContainer.insertBefore(div, panelsContainer.lastElementChild);
     });
 
-    // Defer chart creation until after the browser has done a layout pass.
-    // Without this, Chart.js can measure the parent before the surrounding
-    // flex layout settles, render at the wrong width, then shrink on the
-    // next resize observer tick.
     requestAnimationFrame(() => {
         renderChartPanel("{{ chart_id }}", mainData, true);
         subplotsData.forEach((sp, i) => renderChartPanel("subplot-" + i, sp, false));
@@ -48,33 +47,65 @@ window.chartZoomReset = function() {
 
 function renderChartPanel(canvasId, chartData, isMain) {
     const ctx = document.getElementById(canvasId).getContext("2d");
-    const colors = ["#0d6efd","#198754","#dc3545","#ffc107","#0dcaf0","#6f42c1","#fd7e14","#20c997"];
-    const studyColors = ["#ff6384","#36a2eb","#ffce56","#4bc0c0","#9966ff","#ff9f40"];
+
+    // Resolve theme-driven colors at draw time so dark/light both work.
+    const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    const gridColor = cssVar('--chart-grid') || 'rgba(255,255,255,0.04)';
+    const tickColor = cssVar('--chart-tick') || '#5c6773';
+    const textColor = cssVar('--chart-text') || '#e6edf3';
+    const titleColor = cssVar('--chart-title') || '#8b96a3';
+    const tooltipBg = cssVar('--chart-tooltip-bg') || '#181f28';
+    const tooltipBorder = cssVar('--chart-tooltip-border') || '#283040';
+    const zoomFill = cssVar('--chart-zoom-fill') || 'rgba(245,165,36,0.12)';
+    const zoomLine = cssVar('--chart-zoom-line') || '#f5a524';
+
+    // Main palette: cool-led for raw data series (blue first). Solid strokes.
+    // Study palette: signal-ordered (red, orange, green …) for high-visibility
+    // overlays on top of the mains. Dashed strokes (set below).
+    // Brand accent (amber) intentionally excluded from both so it stays a state color.
+    const colors = ["#3b82f6", "#10b981", "#ef4444", "#a855f7", "#f97316", "#06b6d4", "#ec4899", "#84cc16"];
+    const studyColors = ["#ef4444", "#f97316", "#10b981", "#a855f7", "#06b6d4", "#ec4899"];
+
     const type = chartData.chart_type;
-    const upColor = "#198754";
-    const downColor = "#dc3545";
-    const upBg = "#19875488";
-    const downBg = "#dc354588";
+    const upColor = "#22c55e";
+    const downColor = "#ef4444";
+    const upBg = "#22c55e88";
+    const downBg = "#ef444488";
     const n = chartData.x_values.length;
 
-    // Determine how many x-axis labels to show based on data density
     const maxTicks = Math.min(20, Math.max(6, Math.floor(n / 30)));
 
-    // Common zoom/pan config — drag to zoom, shift+drag to pan
     const zoomConfig = {
         zoom: {
             wheel: { enabled: false },
             pinch: { enabled: true },
-            drag: { enabled: true, backgroundColor: 'rgba(13,110,253,0.15)', borderColor: '#0d6efd', borderWidth: 1 },
+            drag: { enabled: true, backgroundColor: zoomFill, borderColor: zoomLine, borderWidth: 1 },
             mode: 'x',
         },
-        pan: {
-            enabled: true,
-            mode: 'x',
+        pan: { enabled: true, mode: 'x' },
+        limits: { x: { minRange: 5 } },
+    };
+
+    const baseAxisStyle = {
+        grid: { color: gridColor, drawBorder: false, borderColor: 'transparent', tickColor: 'transparent' },
+        border: { display: false },
+        ticks: {
+            color: tickColor,
+            font: { family: "'IBM Plex Mono', monospace", size: 10 },
         },
-        limits: {
-            x: { minRange: 5 },
-        },
+        title: { color: titleColor, font: { family: "'IBM Plex Mono', monospace", size: 10, weight: '500' } },
+    };
+
+    const tooltipStyle = {
+        backgroundColor: tooltipBg,
+        borderColor: tooltipBorder,
+        borderWidth: 1,
+        titleColor: textColor,
+        titleFont: { family: "'IBM Plex Mono', monospace", size: 11, weight: '500' },
+        bodyColor: textColor,
+        bodyFont: { family: "'IBM Plex Mono', monospace", size: 11 },
+        padding: 8,
+        cornerRadius: 4,
     };
 
     let chart;
@@ -130,9 +161,11 @@ function renderChartPanel(canvasId, chartData, isMain) {
                 maintainAspectRatio: false,
                 scales: {
                     x: {
+                        ...baseAxisStyle,
                         type: "linear",
-                        title: { display: isMain, text: chartData.x_label },
+                        title: { ...baseAxisStyle.title, display: isMain, text: chartData.x_label },
                         ticks: {
+                            ...baseAxisStyle.ticks,
                             maxTicksLimit: maxTicks,
                             callback: function(val) {
                                 const idx = Math.round(val);
@@ -146,6 +179,7 @@ function renderChartPanel(canvasId, chartData, isMain) {
                         max: ohlcData.length - 0.5,
                     },
                     y: {
+                        ...baseAxisStyle,
                         beginAtZero: false,
                         min: Math.min(...ohlcData.filter(d=>d).map(d=>d.l)) * 0.998,
                         max: Math.max(...ohlcData.filter(d=>d).map(d=>d.h)) * 1.002,
@@ -155,6 +189,7 @@ function renderChartPanel(canvasId, chartData, isMain) {
                     legend: { display: false },
                     zoom: zoomConfig,
                     tooltip: {
+                        ...tooltipStyle,
                         callbacks: {
                             title: function(items) {
                                 const idx = Math.round(items[0].parsed.x);
@@ -188,8 +223,8 @@ function renderChartPanel(canvasId, chartData, isMain) {
                     data: ds.data,
                     borderColor: sColor,
                     backgroundColor: "transparent",
-                    borderDash: [8, 4],
-                    borderWidth: 2,
+                    borderDash: [6, 4],
+                    borderWidth: 1.5,
                     pointRadius: 0,
                     tension: 0.2,
                     order: 10,
@@ -201,10 +236,12 @@ function renderChartPanel(canvasId, chartData, isMain) {
                     label: ds.label,
                     data: ds.data,
                     borderColor: color,
-                    backgroundColor: type === "bar" ? color + "88" : "transparent",
-                    borderWidth: type === "line" ? 2 : 1,
-                    pointRadius: type === "scatter" ? 3 : 0,
-                    tension: 0.1,
+                    backgroundColor: type === "bar" ? color + "AA" : color + "14",
+                    borderWidth: type === "line" ? 1.75 : 1,
+                    pointRadius: type === "scatter" ? 2.5 : 0,
+                    pointHoverRadius: 4,
+                    tension: 0.15,
+                    fill: false,
                     order: 0,
                 };
                 datasetIdx++;
@@ -223,17 +260,32 @@ function renderChartPanel(canvasId, chartData, isMain) {
                 maintainAspectRatio: false,
                 scales: {
                     x: {
-                        title: { display: isMain, text: chartData.x_label },
+                        ...baseAxisStyle,
+                        title: { ...baseAxisStyle.title, display: isMain, text: chartData.x_label },
                         ticks: {
+                            ...baseAxisStyle.ticks,
                             maxTicksLimit: maxTicks,
-                            maxRotation: 45,
+                            maxRotation: 0,
                             autoSkip: true,
                         },
                     },
+                    y: baseAxisStyle,
                 },
                 plugins: {
-                    legend: { position: "top" },
+                    legend: {
+                        position: "top",
+                        align: "end",
+                        labels: {
+                            color: textColor,
+                            font: { family: "'IBM Plex Mono', monospace", size: 11 },
+                            boxWidth: 10,
+                            boxHeight: 2,
+                            padding: 12,
+                            usePointStyle: false,
+                        }
+                    },
                     zoom: zoomConfig,
+                    tooltip: tooltipStyle,
                 },
                 interaction: { mode: "index", intersect: false },
             },

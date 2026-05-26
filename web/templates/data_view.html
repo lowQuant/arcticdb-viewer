@@ -2,12 +2,204 @@
 {% block title %}{{ symbol }} - arcticdb-viewer{% endblock %}
 
 {% block content %}
+<style>
+    /* Page-scoped layout tweaks */
+    #main-layout { gap: 0; }
+    #main-pane { padding-right: 0; }
+    #side-pane.open { box-shadow: -10px 0 30px rgba(0,0,0,0.25); }
+
+    /* Workspace header — symbol identity strip */
+    .ws-head {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 1rem;
+        align-items: end;
+        padding-bottom: 0.75rem;
+        margin-bottom: 0.875rem;
+        border-bottom: 1px solid var(--line-2);
+    }
+    .ws-symbol {
+        display: flex; align-items: baseline; gap: 0.6rem;
+        font-family: var(--mono);
+        font-size: 1.5rem; font-weight: 500;
+        letter-spacing: -0.01em;
+        color: var(--ink-1);
+        line-height: 1.1;
+    }
+    .ws-symbol .ticker { color: var(--ink-1); }
+    .ws-symbol .bi { color: var(--ink-3); }
+    .ws-metrics {
+        display: flex; gap: 1.25rem;
+        margin-top: 0.5rem;
+    }
+    .ws-metric { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+    .ws-metric .v {
+        font-family: var(--mono);
+        font-size: 0.875rem; font-weight: 500;
+        color: var(--ink-1);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .ws-metric .l {
+        font-family: var(--mono);
+        font-size: 0.625rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--ink-3);
+    }
+    .ws-metric .v.up { color: var(--up); }
+    .ws-metric .v.acc { color: var(--info); }
+
+    /* Query builder: tighter, more terminal-like */
+    #query-operations:empty + .qb-empty { display: block; }
+    .qb-empty {
+        display: none;
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        color: var(--ink-4);
+        padding: 0.25rem 0;
+    }
+    .op-row {
+        background: var(--bg-2);
+        border: 1px solid var(--line-2);
+        border-radius: 4px;
+        padding: 0.4rem 0.55rem;
+        margin-bottom: 0.35rem !important;
+    }
+    .op-row .badge { flex: 0 0 auto; }
+
+    /* Toolbar row */
+    .ws-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.5rem 0;
+        margin-bottom: 0.5rem;
+        border-top: 1px solid var(--line-1);
+        border-bottom: 1px solid var(--line-1);
+    }
+    .ws-toolbar-left, .ws-toolbar-right { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .toolbar-divider { width: 1px; height: 18px; background: var(--line-2); margin: 0 0.25rem; }
+
+    /* Active query badges */
+    #active-badges:not(:empty) { gap: 0.25rem; display: flex; flex-wrap: wrap; }
+    #active-badges .badge {
+        font-family: var(--mono);
+        text-transform: none;
+        letter-spacing: 0;
+        font-size: 0.6875rem;
+        padding: 0.22rem 0.5rem;
+    }
+
+    /* Chart workspace — feels like an integrated panel */
+    #chart-section .qt-panel { border-radius: 6px; }
+    #chart-section .qt-panel-head {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 0;
+        min-height: 0;
+    }
+    .chart-toolbar-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--line-1);
+        flex-wrap: wrap;
+    }
+    .chart-toolbar-row:last-of-type { border-bottom: 1px solid var(--line-2); }
+    .chart-toolbar-row .group {
+        display: flex; align-items: center; gap: 0.4rem;
+    }
+    .chart-toolbar-row .group + .group::before {
+        content: "";
+        width: 1px; height: 16px; background: var(--line-2);
+        margin: 0 0.25rem;
+    }
+    .chart-toolbar-row .label {
+        font-family: var(--mono);
+        font-size: 0.625rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--ink-3);
+    }
+    .chart-toolbar-row .title-line {
+        display: flex; align-items: center; gap: 0.5rem;
+        margin-right: auto;
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--ink-1);
+    }
+    .chart-toolbar-row .title-line .bi { color: var(--ink-3); }
+
+    .chart-y-bar {
+        padding: 0.4rem 0.75rem;
+        border-bottom: 1px solid var(--line-1);
+        background: var(--bg-1);
+    }
+    .chart-y-bar .form-check-inline { margin-right: 0.5rem; }
+    .chart-y-bar .form-check-label {
+        font-family: var(--mono);
+        font-size: 0.75rem;
+    }
+
+    .chart-canvas-area {
+        padding: 0.75rem;
+        background:
+            linear-gradient(var(--bg-1), var(--bg-1)),
+            radial-gradient(ellipse at top, rgba(245,165,36,0.05), transparent 60%);
+        background-blend-mode: normal;
+    }
+
+    /* Side pane integrated */
+    #main-layout { display: flex; align-items: flex-start; }
+    #main-pane { min-width: 0; }
+    #side-pane {
+        width: 380px !important;
+        min-width: 380px !important;
+        max-height: calc(100vh - 80px);
+        overflow-y: auto;
+        margin-left: 0.875rem !important;
+        padding: 0 !important;
+        border-radius: 6px;
+        background: var(--bg-1);
+        border: 1px solid var(--line-2) !important;
+    }
+    .side-pane-head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--line-2);
+        background: var(--bg-1);
+        position: sticky; top: 0; z-index: 2;
+    }
+    .side-pane-head-title {
+        font-family: var(--mono);
+        font-size: 0.6875rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--ink-2);
+        display: flex; align-items: center; gap: 0.5rem;
+    }
+    .side-pane-head-title .bi { color: var(--ink-3); }
+    #sidepane-content { padding: 0.625rem 0.75rem; }
+
+    /* Add-row form */
+    #add-row-form .add-row-input {
+        font-family: var(--mono);
+    }
+</style>
+
 <div class="d-flex" id="main-layout">
 <!-- Main pane -->
 <div class="flex-grow-1" id="main-pane" style="min-width: 0;">
 
 <!-- Breadcrumb -->
-<nav aria-label="breadcrumb" class="mb-3">
+<nav aria-label="breadcrumb" class="mb-2">
     <ol class="breadcrumb">
         <li class="breadcrumb-item"><a href="/libraries">Libraries</a></li>
         <li class="breadcrumb-item"><a href="/libraries/{{ library }}/symbols">{{ library }}</a></li>
@@ -15,20 +207,38 @@
     </ol>
 </nav>
 
-<!-- Symbol info -->
-<div class="d-flex justify-content-between align-items-start mb-3">
+<!-- Symbol info / identity header -->
+<div class="ws-head">
     <div>
-        <h4 class="mb-1"><i class="bi bi-table"></i> {{ symbol }}</h4>
-        <span class="badge bg-secondary">{{ description.rows }} rows</span>
-        <span class="badge bg-secondary">{{ description.columns|length }} columns</span>
-        {% if description.index %}
-        <span class="badge bg-info">index: {{ description.index.name }}</span>
-        {% endif %}
-        {% if description.date_range %}
-        <span class="badge bg-info">{{ description.date_range[0][:10] }} to {{ description.date_range[1][:10] }}</span>
-        {% endif %}
+        <div class="eyebrow mb-1" style="color: var(--ink-4);">Symbol</div>
+        <div class="ws-symbol">
+            <i class="bi bi-table" style="font-size: 1.1rem;"></i>
+            <span class="ticker">{{ symbol }}</span>
+        </div>
+        <div class="ws-metrics">
+            <div class="ws-metric">
+                <span class="v tabular">{{ "{:,}".format(description.rows) }}</span>
+                <span class="l">Rows</span>
+            </div>
+            <div class="ws-metric">
+                <span class="v tabular">{{ description.columns|length }}</span>
+                <span class="l">Columns</span>
+            </div>
+            {% if description.index %}
+            <div class="ws-metric">
+                <span class="v acc">{{ description.index.name }}</span>
+                <span class="l">Index</span>
+            </div>
+            {% endif %}
+            {% if description.date_range %}
+            <div class="ws-metric">
+                <span class="v">{{ description.date_range[0][:10] }} <span style="color: var(--ink-4);">→</span> {{ description.date_range[1][:10] }}</span>
+                <span class="l">Range</span>
+            </div>
+            {% endif %}
+        </div>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-1">
         <button class="btn btn-sm btn-outline-secondary" onclick="toggleSidePane()" title="Toggle side pane">
             <i class="bi bi-layout-sidebar-reverse"></i> Side pane
         </button>
@@ -36,21 +246,22 @@
                 hx-delete="/libraries/{{ library }}/symbols/{{ symbol }}"
                 hx-confirm="Delete symbol '{{ symbol }}'? This cannot be undone."
                 hx-on::after-request="if(event.detail.successful) window.location.href='/libraries/{{ library }}/symbols'">
-            <i class="bi bi-trash"></i> Delete Symbol
+            <i class="bi bi-trash"></i> Delete
         </button>
     </div>
 </div>
 
 <!-- Query Builder -->
-<div class="card bg-dark border mb-3">
-    <div class="card-header d-flex justify-content-between align-items-center py-2">
-        <span class="fw-bold small"><i class="bi bi-funnel"></i> Query Builder</span>
-        <div>
+<div class="qt-panel mb-3">
+    <div class="qt-panel-head">
+        <span class="qt-panel-head-title"><i class="bi bi-funnel"></i> Query pipeline</span>
+        <div class="d-flex gap-1">
             <div class="btn-group btn-group-sm">
                 <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                    <i class="bi bi-plus-lg"></i> Add operation
+                    <i class="bi bi-plus-lg"></i> Add step
                 </button>
                 <ul class="dropdown-menu dropdown-menu-dark">
+                    <li class="px-2 py-1 eyebrow">Operations</li>
                     <li><a class="dropdown-item" href="#" onclick="addOp('filter')"><i class="bi bi-funnel"></i> Filter rows</a></li>
                     <li><a class="dropdown-item" href="#" onclick="addOp('deduplicate')"><i class="bi bi-list-check"></i> Unique / Deduplicate</a></li>
                     <li><a class="dropdown-item" href="#" onclick="addOp('group_by')"><i class="bi bi-collection"></i> Group &amp; Aggregate</a></li>
@@ -58,35 +269,41 @@
                     <li><a class="dropdown-item" href="#" onclick="addOp('columns')"><i class="bi bi-layout-three-columns"></i> Select columns</a></li>
                 </ul>
             </div>
-            <button class="btn btn-sm btn-primary ms-1" onclick="executeQuery()">
+            <button class="btn btn-sm btn-primary" onclick="executeQuery()">
                 <i class="bi bi-play-fill"></i> Apply
             </button>
-            <button class="btn btn-sm btn-outline-secondary ms-1" onclick="clearQuery()">
+            <button class="btn btn-sm btn-outline-secondary" onclick="clearQuery()">
                 Clear
             </button>
         </div>
     </div>
-    <div class="card-body py-2" id="query-operations">
+    <div class="qt-panel-body dense" id="query-operations">
         <!-- Operations added here dynamically -->
     </div>
-    <div class="card-footer py-1" id="query-help" style="display:none;">
-        <span class="small text-muted">
-            Values: <code>10^6</code>, <code>2.5e3</code>, <code>1_000</code>.
-            Between: <code>100,500</code>. Dates: <code>2025-01-01,2025-06-30</code>.
+    <div class="qb-empty px-3 pb-2">
+        No active operations. Use <span class="mono" style="color: var(--ink-1);">Add step</span> to filter, group, sort, or limit.
+    </div>
+    <div class="card-footer" id="query-help" style="display:none;">
+        <span class="label-mono" style="margin-right: 0.5rem;">Hints</span>
+        <span class="small" style="color: var(--ink-3); font-family: var(--mono); font-size: 0.7rem;">
+            Values: <code>10^6</code>, <code>2.5e3</code>, <code>1_000</code> ·
+            Between: <code>100,500</code> ·
+            Dates: <code>2025-01-01,2025-06-30</code>
         </span>
     </div>
 </div>
 
-<!-- Controls row: chart | badges | limit, page size -->
-<div class="d-flex justify-content-between align-items-center mb-2">
-    <div class="d-flex align-items-center gap-2">
+<!-- Toolbar row: chart toggle | active badges | limit + page -->
+<div class="ws-toolbar">
+    <div class="ws-toolbar-left">
         <button class="btn btn-sm btn-outline-info" onclick="toggleChart()">
             <i class="bi bi-graph-up"></i> Chart
         </button>
-        <div id="active-badges" class="d-flex align-items-center gap-1"></div>
+        <div class="toolbar-divider"></div>
+        <div id="active-badges" class="d-flex align-items-center"></div>
     </div>
-    <div class="d-flex align-items-center gap-2">
-        <span class="small text-muted">Show</span>
+    <div class="ws-toolbar-right">
+        <span class="label-mono">Show</span>
         <select id="limit-mode" class="form-select form-select-sm" style="width:75px;" onchange="executeQuery()">
             <option value="">all</option>
             <option value="first">first</option>
@@ -94,9 +311,9 @@
         </select>
         <input type="number" id="limit-n" class="form-control form-control-sm" value="100" min="1"
                style="width:70px; display:none;" onchange="executeQuery()">
-        <span class="small text-muted" id="limit-rows-label" style="display:none;">rows</span>
-        <span class="text-muted">|</span>
-        <label class="form-label small mb-0">Page</label>
+        <span class="label-mono" id="limit-rows-label" style="display:none;">rows</span>
+        <div class="toolbar-divider"></div>
+        <span class="label-mono">Page size</span>
         <select id="page-size" class="form-select form-select-sm" style="width:70px;" onchange="executeQuery()">
             <option value="25">25</option>
             <option value="50" selected>50</option>
@@ -109,27 +326,31 @@
 
 <!-- Chart (collapsible) -->
 <div id="chart-section" style="display:none;" class="mb-3">
-    <div class="card bg-dark border">
-        <div class="card-header py-2">
-            <!-- Main chart controls -->
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <span class="small fw-bold"><i class="bi bi-graph-up"></i> Main chart</span>
-                <div class="d-flex gap-2 align-items-center">
-                    {% if is_multiindex %}
-                    <label class="small text-muted mb-0">Mode</label>
+    <div class="qt-panel">
+        <div class="qt-panel-head">
+            <!-- Row 1: title + main controls -->
+            <div class="chart-toolbar-row">
+                <span class="title-line"><i class="bi bi-graph-up"></i> Chart</span>
+                {% if is_multiindex %}
+                <div class="group">
+                    <span class="label">Mode</span>
                     <select id="chart-source" class="form-select form-select-sm" style="width:130px;" onchange="onChartSourceChange()">
                         <option value="standard" selected>Standard</option>
                         <option value="contract">Contract</option>
                     </select>
-                    {% endif %}
-                    <label class="small text-muted mb-0" id="x-label">X</label>
+                </div>
+                {% endif %}
+                <div class="group">
+                    <span class="label" id="x-label">X</span>
                     <select id="chart-x" class="form-select form-select-sm" style="width:130px;" onchange="onChartSettingChange()">
                         <option value="__index__">{{ description.index.name or 'index' }}</option>
                         {% for col in description.columns %}
                         <option value="{{ col }}">{{ col }}</option>
                         {% endfor %}
                     </select>
-                    <label class="small text-muted mb-0">Type</label>
+                </div>
+                <div class="group">
+                    <span class="label">Type</span>
                     <select id="chart-type" class="form-select form-select-sm" style="width:120px;" onchange="onChartSettingChange()">
                         <option value="line">Line</option>
                         {% if has_ohlc %}
@@ -138,7 +359,9 @@
                         <option value="bar">Bar</option>
                         <option value="scatter">Scatter</option>
                     </select>
-                    <label class="small text-muted mb-0">Period</label>
+                </div>
+                <div class="group">
+                    <span class="label">Period</span>
                     <select id="chart-period" class="form-select form-select-sm" style="width:80px;" onchange="onChartSettingChange()">
                         <option value="" selected>Daily</option>
                         <option value="W">Weekly</option>
@@ -146,42 +369,46 @@
                         <option value="Q">Quarterly</option>
                         <option value="Y">Yearly</option>
                     </select>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleChart()"><i class="bi bi-x-lg"></i></button>
                 </div>
+                <button class="btn btn-sm btn-outline-secondary" onclick="toggleChart()" title="Close chart"><i class="bi bi-x-lg"></i></button>
             </div>
 
             {% if is_multiindex %}
-            <!-- Contract mode controls (hidden by default, shown when chart source = contract) -->
-            <div id="contract-controls" class="align-items-center gap-2 mb-2 flex-wrap d-none">
-                <span class="small text-muted">Contract:</span>
-                <select id="contract-mode" class="form-select form-select-sm" style="width:120px;" onchange="onContractModeChange()">
-                    <option value="single">Single rank</option>
-                    <option value="overlay">Overlay</option>
-                    <option value="spread" selected>Spread</option>
-                </select>
-                <label class="small text-muted mb-0">Column:</label>
-                <select id="contract-col" class="form-select form-select-sm" style="width:110px;" onchange="onChartSettingChange()">
-                    {% for col in description.columns %}
-                    <option value="{{ col }}" {% if col == 'close' %}selected{% endif %}>{{ col }}</option>
-                    {% endfor %}
-                </select>
-                <span id="single-rank-controls">
-                    <label class="small text-muted mb-0">{{ symbol }}</label>
+            <!-- Contract mode controls -->
+            <div id="contract-controls" class="chart-toolbar-row d-none">
+                <span class="label">Contract</span>
+                <div class="group">
+                    <select id="contract-mode" class="form-select form-select-sm" style="width:120px;" onchange="onContractModeChange()">
+                        <option value="single">Single rank</option>
+                        <option value="overlay">Overlay</option>
+                        <option value="spread" selected>Spread</option>
+                    </select>
+                </div>
+                <div class="group">
+                    <span class="label">Column</span>
+                    <select id="contract-col" class="form-select form-select-sm" style="width:110px;" onchange="onChartSettingChange()">
+                        {% for col in description.columns %}
+                        <option value="{{ col }}" {% if col == 'close' %}selected{% endif %}>{{ col }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <span id="single-rank-controls" class="group">
+                    <span class="label">Rank</span>
                     <input type="number" id="contract-rank" class="form-control form-control-sm" value="1" min="1" max="24" style="width:55px;" onchange="onChartSettingChange()" title="1=front-month, 2=second-month, ...">
                 </span>
-                <span id="spread-rank-controls">
-                    <label class="small text-muted mb-0">{{ symbol }}</label>
+                <span id="spread-rank-controls" class="group">
+                    <span class="label">Front</span>
                     <input type="number" id="spread-rank1" class="form-control form-control-sm" value="1" min="1" max="24" style="width:55px;" onchange="onChartSettingChange()" title="Front leg (1=front-month)">
-                    <span class="small text-muted mx-1">-</span>
-                    <label class="small text-muted mb-0">{{ symbol }}</label>
+                    <span style="color: var(--ink-4); font-family: var(--mono);">−</span>
+                    <span class="label">Back</span>
                     <input type="number" id="spread-rank2" class="form-control form-control-sm" value="2" min="1" max="24" style="width:55px;" onchange="onChartSettingChange()" title="Back leg (2=second-month)">
                 </span>
             </div>
             {% endif %}
 
-            <!-- Y column checkboxes (for standard mode, hidden for candlestick) -->
-            <div id="chart-y-section" class="d-flex align-items-center gap-1 flex-wrap">
-                <span class="small text-muted me-1">Y columns:</span>
+            <!-- Y column checkboxes -->
+            <div id="chart-y-section" class="chart-y-bar d-flex align-items-center gap-2 flex-wrap">
+                <span class="label">Y columns</span>
                 <div id="chart-y-checks" class="d-flex gap-1 flex-wrap">
                     {% for col in description.columns %}
                     <div class="form-check form-check-inline mb-0">
@@ -193,15 +420,18 @@
                 </div>
             </div>
 
-            <!-- Studies -->
-            <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
-                <span class="small text-muted">Studies:</span>
-                <div id="study-list" class="d-flex gap-1 flex-wrap"></div>
+            <!-- Studies + subplots -->
+            <div class="chart-toolbar-row">
+                <div class="group">
+                    <span class="label">Studies</span>
+                    <div id="study-list" class="d-flex gap-1 flex-wrap"></div>
+                </div>
                 <div class="btn-group btn-group-sm">
                     <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                        <i class="bi bi-plus-lg"></i> Add study
+                        <i class="bi bi-plus-lg"></i> Study
                     </button>
                     <ul class="dropdown-menu dropdown-menu-dark">
+                        <li class="px-2 py-1 eyebrow">Moving averages</li>
                         <li><a class="dropdown-item" href="#" onclick="addStudy('sma', 20)">SMA (20)</a></li>
                         <li><a class="dropdown-item" href="#" onclick="addStudy('sma', 50)">SMA (50)</a></li>
                         <li><a class="dropdown-item" href="#" onclick="addStudy('sma', 200)">SMA (200)</a></li>
@@ -210,18 +440,16 @@
                         <li><a class="dropdown-item" href="#" onclick="addStudy('ema', 26)">EMA (26)</a></li>
                         <li><a class="dropdown-item" href="#" onclick="addStudy('ema', 50)">EMA (50)</a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="#" onclick="promptCustomStudy()">Custom...</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="promptCustomStudy()">Custom…</a></li>
                     </ul>
                 </div>
+                <div id="subplot-configs" class="d-flex flex-wrap gap-1" style="flex: 1;"></div>
+                <button class="btn btn-sm btn-outline-secondary" onclick="addSubplot()">
+                    <i class="bi bi-plus-lg"></i> Subplot
+                </button>
             </div>
-
-            <!-- Subplots -->
-            <div id="subplot-configs" class="mt-2"></div>
-            <button class="btn btn-sm btn-outline-secondary mt-1" onclick="addSubplot()">
-                <i class="bi bi-plus-lg"></i> Add subplot
-            </button>
         </div>
-        <div class="card-body py-2" id="chart-container"></div>
+        <div class="chart-canvas-area" id="chart-container"></div>
     </div>
 </div>
 
@@ -229,9 +457,9 @@
 <div class="d-flex justify-content-between align-items-center mb-2">
     <div id="delete-rows-bar" style="display:none;">
         <button class="btn btn-sm btn-danger" onclick="deleteSelectedRows()">
-            <i class="bi bi-trash"></i> Delete selected rows
+            <i class="bi bi-trash"></i> Delete selected
         </button>
-        <span class="text-muted ms-2" id="selected-count">0 selected</span>
+        <span class="label-mono ms-2" id="selected-count">0 selected</span>
     </div>
     <div class="ms-auto">
         <button class="btn btn-sm btn-outline-success" onclick="showAddRowForm()">
@@ -240,56 +468,58 @@
     </div>
 </div>
 
-<!-- Add row form (hidden by default) -->
-<div id="add-row-form" style="display:none;" class="card bg-dark border mb-2">
-    <div class="card-body py-2">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-            <span class="small fw-bold"><i class="bi bi-plus-lg"></i> Add new row</span>
-            <button class="btn btn-sm btn-outline-secondary" onclick="hideAddRowForm()"><i class="bi bi-x-lg"></i></button>
-        </div>
+<!-- Add row form -->
+<div id="add-row-form" style="display:none;" class="qt-panel mb-2">
+    <div class="qt-panel-head">
+        <span class="qt-panel-head-title"><i class="bi bi-plus-circle"></i> Insert row</span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="hideAddRowForm()"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="qt-panel-body dense">
         <div class="row g-2" id="add-row-fields">
             {% if description.index %}
             <div class="col-auto">
-                <label class="form-label small mb-0">{{ description.index.name }} <span class="text-info">(index)</span></label>
-                <input type="text" class="form-control form-control-sm add-row-input" data-col="{{ description.index.name }}" placeholder="e.g. 2026-01-01">
+                <label class="form-label small mb-1">{{ description.index.name }} <span class="badge bg-info">idx</span></label>
+                <input type="text" class="form-control form-control-sm add-row-input" data-col="{{ description.index.name }}" placeholder="2026-01-01">
             </div>
             {% endif %}
             {% for col in description.columns %}
             <div class="col-auto">
-                <label class="form-label small mb-0">{{ col }}</label>
+                <label class="form-label small mb-1">{{ col }}</label>
                 <input type="text" class="form-control form-control-sm add-row-input" data-col="{{ col }}" placeholder="{{ col }}">
             </div>
             {% endfor %}
         </div>
-        <div class="mt-2">
+        <div class="mt-2 pt-2" style="border-top: 1px solid var(--line-2);">
             <button class="btn btn-sm btn-success" onclick="submitAddRow()">
-                <i class="bi bi-plus-lg"></i> Add
+                <i class="bi bi-check-lg"></i> Insert
             </button>
         </div>
     </div>
 </div>
 
 <!-- Data table -->
-<div class="table-container" id="data-table"
+<div class="table-container qt-panel" id="data-table"
      hx-get="/api/data/{{ library }}/{{ symbol }}?page=0&page_size={{ page_size }}"
      hx-trigger="load, refreshTable from:body"
      hx-swap="innerHTML">
     <div class="text-center py-4">
-        <div class="spinner-border spinner-border-sm" role="status"></div> Loading data...
+        <div class="spinner-border spinner-border-sm" role="status"></div>
+        <span class="label-mono ms-2">Loading…</span>
     </div>
 </div>
 
 </div><!-- end main-pane -->
 
 <!-- Side pane (hidden by default) -->
-<div id="side-pane" class="border-start ps-3 ms-3" style="display:none; width:420px; min-width:420px; max-height: calc(100vh - 80px); overflow-y: auto;">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-        <span class="small fw-bold"><i class="bi bi-layout-sidebar-reverse"></i> Side pane</span>
+<div id="side-pane" style="display:none;">
+    <div class="side-pane-head">
+        <span class="side-pane-head-title"><i class="bi bi-layout-sidebar-reverse"></i> Side pane</span>
         <button class="btn btn-sm btn-outline-secondary" onclick="toggleSidePane()"><i class="bi bi-x-lg"></i></button>
     </div>
     <div id="sidepane-content">
         <div class="text-center py-3">
-            <div class="spinner-border spinner-border-sm" role="status"></div> Loading libraries...
+            <div class="spinner-border spinner-border-sm" role="status"></div>
+            <span class="label-mono ms-2">Loading…</span>
         </div>
     </div>
 </div>
@@ -320,7 +550,6 @@
         document.getElementById("limit-n").style.display = hasLimit ? "" : "none";
         document.getElementById("limit-rows-label").style.display = hasLimit ? "" : "none";
     });
-    // Also handle Enter in limit-n
     document.getElementById("limit-n").addEventListener("keydown", function(e) {
         if (e.key === "Enter") { e.preventDefault(); executeQuery(); }
     });
@@ -330,7 +559,6 @@
         let html = '';
         if (includeIndex) {
             if (IS_MULTIINDEX && INDEX_NAMES.length > 0) {
-                // Expose each MultiIndex level as a filterable option
                 INDEX_NAMES.forEach((name, i) => {
                     html += `<option value="__index_${i}__">${name} (index ${i})</option>`;
                 });
@@ -345,8 +573,8 @@
     // ── Operation templates ──
     const OP_TEMPLATES = {
         filter: () => `
-            <div class="op-row d-flex gap-2 align-items-center mb-1" data-type="filter">
-                <span class="badge bg-primary">Filter</span>
+            <div class="op-row d-flex gap-2 align-items-center" data-type="filter">
+                <span class="badge bg-primary">filter</span>
                 <select class="form-select form-select-sm op-col" style="width:140px;">${colOptionsHTML(true)}</select>
                 <select class="form-select form-select-sm op-operator" style="width:110px;">
                     <option value="eq">=</option>
@@ -362,28 +590,28 @@
                     <option value="regex">regex</option>
                 </select>
                 <input type="text" class="form-control form-control-sm op-value" placeholder="Value (e.g. 10^6)" style="width:160px;">
-                <button class="btn btn-sm btn-outline-danger" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
+                <button class="btn btn-sm btn-outline-danger ms-auto" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
             </div>`,
 
         deduplicate: () => `
-            <div class="op-row d-flex gap-2 align-items-center mb-1" data-type="deduplicate">
-                <span class="badge bg-success">Unique</span>
-                <span class="small text-muted">Keep one row per</span>
+            <div class="op-row d-flex gap-2 align-items-center" data-type="deduplicate">
+                <span class="badge bg-success">unique</span>
+                <span class="label-mono">Keep one per</span>
                 <select class="form-select form-select-sm op-col" style="width:140px;">${colOptionsHTML(true)}</select>
                 <select class="form-select form-select-sm op-keep" style="width:100px;">
                     <option value="last">last</option>
                     <option value="first">first</option>
                 </select>
-                <button class="btn btn-sm btn-outline-danger" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
+                <button class="btn btn-sm btn-outline-danger ms-auto" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
             </div>`,
 
         group_by: () => `
-            <div class="op-row d-flex gap-2 align-items-center mb-1" data-type="group_by">
-                <span class="badge bg-warning text-dark">Group</span>
-                <span class="small text-muted">Group by</span>
+            <div class="op-row d-flex gap-2 align-items-center" data-type="group_by">
+                <span class="badge bg-warning">group</span>
+                <span class="label-mono">By</span>
                 <select class="form-select form-select-sm op-col" style="width:140px;">${colOptionsHTML(true)}</select>
-                <span class="small text-muted">then</span>
-                <select class="form-select form-select-sm op-agg" style="width:110px;">
+                <span class="label-mono">Then</span>
+                <select class="form-select form-select-sm op-agg" style="width:120px;">
                     <option value="last">last value</option>
                     <option value="first">first value</option>
                     <option value="mean">average</option>
@@ -394,18 +622,18 @@
                     <option value="median">median</option>
                     <option value="std">std dev</option>
                 </select>
-                <button class="btn btn-sm btn-outline-danger" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
+                <button class="btn btn-sm btn-outline-danger ms-auto" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
             </div>`,
 
         sort: () => `
-            <div class="op-row d-flex gap-2 align-items-center mb-1" data-type="sort">
-                <span class="badge bg-info">Sort</span>
+            <div class="op-row d-flex gap-2 align-items-center" data-type="sort">
+                <span class="badge bg-info">sort</span>
                 <select class="form-select form-select-sm op-col" style="width:140px;">${colOptionsHTML(true)}</select>
                 <select class="form-select form-select-sm op-dir" style="width:120px;">
                     <option value="asc">ascending</option>
                     <option value="desc">descending</option>
                 </select>
-                <button class="btn btn-sm btn-outline-danger" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
+                <button class="btn btn-sm btn-outline-danger ms-auto" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
             </div>`,
 
         columns: () => {
@@ -416,9 +644,9 @@
                 </div>`
             ).join('');
             return `
-            <div class="op-row mb-1" data-type="columns">
+            <div class="op-row" data-type="columns">
                 <div class="d-flex gap-2 align-items-center mb-1">
-                    <span class="badge bg-dark border">Columns</span>
+                    <span class="badge bg-dark">columns</span>
                     <button class="btn btn-sm btn-outline-secondary" onclick="toggleAllCols(true)">All</button>
                     <button class="btn btn-sm btn-outline-secondary" onclick="toggleAllCols(false)">None</button>
                     <button class="btn btn-sm btn-outline-danger ms-auto" onclick="removeOp(this)"><i class="bi bi-x-lg"></i></button>
@@ -452,16 +680,13 @@
         document.querySelectorAll(".col-check").forEach(cb => cb.checked = checked);
     }
 
-    // ── Enter key triggers Apply ──
     document.getElementById("query-operations").addEventListener("keydown", function(e) {
         if (e.key === "Enter") { e.preventDefault(); executeQuery(); }
     });
 
-    // ── Build query from UI ──
     function buildQueryFromUI() {
         const q = {};
 
-        // Filters
         const filters = [];
         document.querySelectorAll('.op-row[data-type="filter"]').forEach(row => {
             const col = row.querySelector(".op-col").value;
@@ -471,7 +696,6 @@
         });
         if (filters.length) q.filters = filters;
 
-        // Deduplicate
         const dedupRow = document.querySelector('.op-row[data-type="deduplicate"]');
         if (dedupRow) {
             q.deduplicate = {
@@ -480,7 +704,6 @@
             };
         }
 
-        // Group by
         const gbRow = document.querySelector('.op-row[data-type="group_by"]');
         if (gbRow) {
             q.group_by = {
@@ -489,7 +712,6 @@
             };
         }
 
-        // Sort
         const sortRow = document.querySelector('.op-row[data-type="sort"]');
         if (sortRow) {
             q.sort = {
@@ -498,14 +720,12 @@
             };
         }
 
-        // Limit (from always-visible controls)
         const limitMode = document.getElementById("limit-mode").value;
         if (limitMode) {
             const n = parseInt(document.getElementById("limit-n").value) || 100;
             q.limit = { mode: limitMode, n: n };
         }
 
-        // Columns
         const colsRow = document.querySelector('.op-row[data-type="columns"]');
         if (colsRow) {
             const selected = Array.from(colsRow.querySelectorAll(".col-check:checked")).map(cb => cb.value);
@@ -517,7 +737,6 @@
         return q;
     }
 
-    // ── URL building ──
     function buildUrl(page) {
         const pageSize = document.getElementById("page-size").value;
         let url = `/api/data/${LIB}/${SYM}?page=${page}&page_size=${pageSize}`;
@@ -534,7 +753,6 @@
         return '';
     }
 
-    // ── Execute ──
     function executeQuery() {
         currentQuery = buildQueryFromUI();
         updateBadges();
@@ -558,7 +776,6 @@
         htmx.ajax("GET", buildUrl(page), "#data-table");
     }
 
-    // ── Sort shortcut from column headers ──
     function sortBy(col) {
         let sortRow = document.querySelector('.op-row[data-type="sort"]');
         if (!sortRow) {
@@ -577,7 +794,6 @@
         executeQuery();
     }
 
-    // ── Active badges ──
     function updateBadges() {
         const container = document.getElementById("active-badges");
         const q = currentQuery;
@@ -586,25 +802,25 @@
         let html = "";
         (q.filters || []).forEach(f => {
             const name = f.col === "__index__" ? (INDEX_NAME || "index") : f.col;
-            html += `<span class="badge bg-primary me-1">${name} ${f.op} ${f.val}</span>`;
+            html += `<span class="badge bg-primary">${name} ${f.op} ${f.val}</span>`;
         });
         if (q.deduplicate) {
             const name = q.deduplicate.col === "__index__" ? (INDEX_NAME || "index") : q.deduplicate.col;
-            html += `<span class="badge bg-success me-1">unique: ${name} (${q.deduplicate.keep})</span>`;
+            html += `<span class="badge bg-success">unique: ${name} (${q.deduplicate.keep})</span>`;
         }
         if (q.group_by) {
             const name = q.group_by.col === "__index__" ? (INDEX_NAME || "index") : q.group_by.col;
-            html += `<span class="badge bg-warning text-dark me-1">group: ${name} (${q.group_by.agg})</span>`;
+            html += `<span class="badge bg-warning">group: ${name} (${q.group_by.agg})</span>`;
         }
         if (q.sort) {
             const name = q.sort.col === "__index__" ? (INDEX_NAME || "index") : q.sort.col;
-            html += `<span class="badge bg-info me-1">sort: ${name} ${q.sort.dir}</span>`;
+            html += `<span class="badge bg-info">sort: ${name} ${q.sort.dir}</span>`;
         }
         if (q.limit) {
-            html += `<span class="badge bg-secondary me-1">${q.limit.mode} ${q.limit.n} rows</span>`;
+            html += `<span class="badge bg-secondary">${q.limit.mode} ${q.limit.n} rows</span>`;
         }
         if (q.columns) {
-            html += `<span class="badge bg-dark border me-1">${q.columns.length} columns</span>`;
+            html += `<span class="badge bg-dark">${q.columns.length} cols</span>`;
         }
         container.innerHTML = html;
     }
@@ -644,7 +860,6 @@
     function autoSelectYColumns() {
         const checked = getSelectedYCols();
         if (checked.length === 0) {
-            // Prefer "close" if available, else first numeric column
             const closeCb = document.getElementById("cy-close");
             if (closeCb) {
                 closeCb.checked = true;
@@ -665,22 +880,18 @@
         }
     }
 
-    // ── Chart source toggle (Standard / Contract) for MultiIndex ──
     function onChartSourceChange() {
         if (!IS_MULTIINDEX) return;
         const contract = isContractMode();
-        // Toggle contract controls using Bootstrap d-none/d-flex
         const contractCtrl = document.getElementById("contract-controls");
         if (contractCtrl) {
             contractCtrl.classList.toggle("d-none", !contract);
             contractCtrl.classList.toggle("d-flex", contract);
         }
-        // Toggle standard controls (X selector, Y checkboxes)
         const xLabel = document.getElementById("x-label");
         const xSelect = document.getElementById("chart-x");
         if (xLabel) xLabel.style.display = contract ? "none" : "";
         if (xSelect) xSelect.style.display = contract ? "none" : "";
-        // Y section
         updateChartTypeUI();
         if (contract) {
             onContractModeChange();
@@ -690,7 +901,6 @@
         if (chartVisible) drawChart();
     }
 
-    // ── Contract mode (MultiIndex) ──
     function onContractModeChange() {
         if (!IS_MULTIINDEX) return;
         const mode = document.getElementById("contract-mode").value;
@@ -732,7 +942,7 @@
                 if (yCols.length === 0) {
                     destroyAllCharts();
                     document.getElementById("chart-container").innerHTML =
-                        '<p class="text-muted text-center py-3">Select Y columns to draw a chart.</p>';
+                        '<div class="text-center py-4"><div class="eyebrow" style="color: var(--ink-4);">No series selected</div><p class="mt-2" style="color: var(--ink-2); margin: 0;">Pick at least one Y column to draw a chart.</p></div>';
                     return;
                 }
                 url += `&y_cols=${encodeURIComponent(yCols.join(','))}`;
@@ -741,12 +951,10 @@
 
         url += buildQueryParam();
 
-        // Studies
         if (activeStudies.length > 0) {
             url += `&studies=${encodeURIComponent(JSON.stringify(activeStudies))}`;
         }
 
-        // Subplots
         const spConfigs = getSubplotConfigs();
         if (spConfigs.length > 0) {
             url += `&subplots=${encodeURIComponent(JSON.stringify(spConfigs))}`;
@@ -783,11 +991,10 @@
         } else {
             destroyAllCharts();
             document.getElementById("chart-container").innerHTML =
-                '<p class="text-muted text-center py-3">Selected columns no longer in data. Pick new Y columns.</p>';
+                '<div class="text-center py-4"><div class="eyebrow" style="color: var(--ink-4);">Series out of range</div><p class="mt-2" style="color: var(--ink-2); margin: 0;">Selected columns no longer in data. Pick new Y columns.</p></div>';
         }
     }
 
-    // ── Studies ──
     function addStudy(type, period) {
         activeStudies.push({ type, period });
         renderStudyBadges();
@@ -803,7 +1010,7 @@
     function renderStudyBadges() {
         const container = document.getElementById("study-list");
         container.innerHTML = activeStudies.map((s, i) =>
-            `<span class="badge bg-info me-1">${s.type.toUpperCase()}(${s.period})
+            `<span class="badge bg-info">${s.type.toUpperCase()}(${s.period})
                 <button class="btn-close btn-close-white ms-1" style="font-size:0.5em; vertical-align:middle;"
                         onclick="removeStudy(${i})"></button>
             </span>`
@@ -823,14 +1030,13 @@
         addStudy(type, period);
     }
 
-    // ── Subplots ──
     function addSubplot() {
         const container = document.getElementById("subplot-configs");
         const idx = container.children.length;
         const colOpts = ALL_COLUMNS.map(c => `<option value="${c}">${c}</option>`).join('');
         container.insertAdjacentHTML("beforeend", `
-            <div class="d-flex gap-2 align-items-center mt-1 subplot-row">
-                <span class="badge bg-secondary">Subplot ${idx + 1}</span>
+            <div class="d-flex gap-1 align-items-center subplot-row">
+                <span class="badge bg-secondary">sub ${idx + 1}</span>
                 <select class="form-select form-select-sm sp-y" style="width:130px;" onchange="onChartSettingChange()">
                     ${colOpts}
                 </select>
@@ -864,18 +1070,22 @@
         const pane = document.getElementById("side-pane");
         sidePaneOpen = !sidePaneOpen;
         pane.style.display = sidePaneOpen ? "" : "none";
+        pane.classList.toggle("open", sidePaneOpen);
         if (sidePaneOpen) {
             loadSidePaneDefault();
         }
-        // Main pane width just changed — let Chart.js re-measure.
         requestAnimationFrame(() => {
             if (window.chartInstance) window.chartInstance.resize();
             (window.subplotInstances || []).forEach(c => c.resize());
         });
     }
 
+    // Redraw chart on theme change so Chart.js picks up the new palette.
+    document.addEventListener('themechange', () => {
+        if (chartVisible) drawChart();
+    });
+
     function loadSidePaneDefault() {
-        // Try to load universe metadata first, fall back to browse
         fetch(`/api/sidepane/metadata/${LIB}/${SYM}`)
             .then(r => {
                 if (r.ok) return r.text();
@@ -883,7 +1093,6 @@
             })
             .then(html => {
                 document.getElementById("sidepane-content").innerHTML = html;
-                // Re-process any htmx attributes in the new content
                 htmx.process(document.getElementById("sidepane-content"));
             })
             .catch(() => {
@@ -891,12 +1100,11 @@
             });
     }
 
-    // ── Cell editing with confirmation ──
-    // States: idle → editing → confirming → saving
-    let activeEdit = null; // track current edit to prevent overlaps
+    // ── Cell editing ──
+    let activeEdit = null;
 
     function editCell(el, rowIdx, colName) {
-        if (activeEdit) return; // prevent double edits
+        if (activeEdit) return;
         const originalValue = el.innerText.trim();
         activeEdit = { el, rowIdx, colName, originalValue };
 
@@ -924,7 +1132,6 @@
         });
 
         input.addEventListener("blur", function() {
-            // If we didn't transition to confirm, cancel
             setTimeout(() => {
                 if (activeEdit && activeEdit.el === el && !el.querySelector(".edit-confirm")) {
                     cancelEdit(el, originalValue);
@@ -959,10 +1166,8 @@
         saveBtn.addEventListener("click", () => doSave(el, rowIdx, colName, originalValue, newValue));
         undoBtn.addEventListener("click", () => cancelEdit(el, originalValue));
 
-        // Focus the save button so Enter confirms
         saveBtn.focus();
 
-        // Global keydown for this confirm state
         function onKey(e) {
             if (e.key === "Enter") {
                 e.preventDefault();
@@ -976,7 +1181,6 @@
             }
         }
         document.addEventListener("keydown", onKey, true);
-        // Store cleanup ref
         el._editKeyHandler = onKey;
     }
 
@@ -1020,7 +1224,6 @@
         activeEdit = null;
     }
 
-    // ── Row selection ──
     function toggleRowSelection(checkbox) {
         const bar = document.getElementById("delete-rows-bar");
         const checked = document.querySelectorAll(".row-checkbox:checked");
@@ -1049,7 +1252,6 @@
         });
     }
 
-    // ── Add row ──
     function showAddRowForm() {
         document.getElementById("add-row-form").style.display = "block";
         const firstInput = document.querySelector(".add-row-input");
@@ -1061,7 +1263,6 @@
         document.querySelectorAll(".add-row-input").forEach(el => el.value = "");
     }
 
-    // Enter in add-row fields triggers submit
     document.getElementById("add-row-fields")?.addEventListener("keydown", function(e) {
         if (e.key === "Enter") { e.preventDefault(); submitAddRow(); }
         if (e.key === "Escape") { hideAddRowForm(); }
