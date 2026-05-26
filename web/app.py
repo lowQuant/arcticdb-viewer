@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from core.connection import get_manager, load_connections
 
-app = FastAPI(title="ADBView")
+app = FastAPI(title="arcticdb-viewer")
 
 templates_dir = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=templates_dir)

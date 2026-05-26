@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ADBView is a web-based data browser and MCP server for ArcticDB, a serverless DataFrame database. It provides a Bootstrap 5 + HTMX web UI for browsing/editing data and an MCP server for LLM integration. Supports LMDB (local), S3 (cloud), and in-memory backends.
+arcticdb-viewer is a web-based data browser and MCP server for ArcticDB, a serverless DataFrame database. It provides a Bootstrap 5 + HTMX web UI for browsing/editing data and an MCP server for LLM integration. Supports LMDB (local), S3 (cloud), and in-memory backends.
 
 ## Architecture
 
