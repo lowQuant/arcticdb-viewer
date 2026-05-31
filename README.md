@@ -25,6 +25,7 @@ Built for **production market data**: writes are **disabled by default**, so bro
 - **Correlation** — Pearson / Spearman / Kendall matrix as a heatmap (signal analysis)
 - **Data quality** — missing cells, duplicate rows/index, constant columns, plus **time-series integrity** (calendar gaps, duplicate timestamps, monotonicity) tuned for OHLCV
 - **Returns / risk** — total return, CAGR, annualised volatility, Sharpe, max drawdown, hit-rate for a price column (annualisation inferred from index spacing)
+- **Signal** — evaluate a predictive signal: Information Coefficient (rank/Pearson correlation of signal vs forward returns) across horizons, and mean forward return per signal quantile bucket with a long-short spread
 - **Export** — download the current (filtered) view as **CSV** or **Parquet**
 - **Code export** — copy reproducible pandas/ArcticDB code for the active query pipeline
 
@@ -63,6 +64,7 @@ Read & analysis tools are **always** available; write tools are only registered 
 | `column_distribution` | Histogram / value counts + IQR outliers for one column |
 | `data_quality_report` | Missing/duplicate/constant + time-series gap checks |
 | `returns_summary` | CAGR, ann. vol, Sharpe, max drawdown, hit-rate for a price column |
+| `signal_analysis` | Information Coefficient + quantile forward-return buckets for a signal |
 
 **Write (only when `ADBVIEW_READONLY=0`):** `create_library`, `delete_library`, `write_data`, `update_data`, `append_data`, `delete_symbol`
 

@@ -37,6 +37,11 @@ def _numeric_columns(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
 
 
+def _spearman(a: pd.Series, b: pd.Series) -> float:
+    """Spearman correlation without a scipy dependency (Pearson of ranks)."""
+    return float(a.rank().corr(b.rank()))
+
+
 # ── 1. Describe (per-column summary statistics) ──
 
 def describe_frame(df: pd.DataFrame) -> list[dict[str, Any]]:
@@ -194,7 +199,16 @@ def correlation_matrix(df: pd.DataFrame, method: str = "pearson") -> dict[str, A
     num = num.loc[:, num.nunique(dropna=True) > 1]
     if num.shape[1] < 2:
         return {"columns": [], "matrix": [], "method": method}
-    corr = num.corr(method=method)
+    if method == "spearman":
+        corr = num.rank().corr()              # Pearson of ranks — scipy-free
+    elif method == "kendall":
+        try:
+            corr = num.corr(method="kendall")  # needs scipy; fall back if absent
+        except Exception:
+            corr = num.rank().corr()
+            method = "spearman"
+    else:
+        corr = num.corr()
     cols = [str(c) for c in corr.columns]
     matrix = [[_clean_float(v) for v in row] for row in corr.values]
     return {"columns": cols, "matrix": matrix, "method": method}
@@ -362,6 +376,90 @@ def returns_stats(df: pd.DataFrame, col: str) -> dict[str, Any]:
         "hit_rate": round(wins / n_periods * 100, 2),
         "skew": _clean_float(rets.skew()) if n_periods > 2 else None,
         "kurtosis": _clean_float(rets.kurtosis()) if n_periods > 3 else None,
+    }
+
+
+# ── 6. Signal analysis (information coefficient & quantile buckets) ──
+
+def signal_analysis(
+    df: pd.DataFrame,
+    signal_col: str,
+    price_col: str,
+    horizons: tuple[int, ...] = (1, 5, 10, 20),
+    bucket_horizon: int = 1,
+    buckets: int = 5,
+) -> dict[str, Any]:
+    """Evaluate a predictive signal against forward returns — read-only.
+
+    Computes the Information Coefficient (rank/Spearman and Pearson
+    correlation between the signal and forward returns) across several
+    horizons, and the mean forward return per signal quantile bucket. This
+    answers "does my signal actually predict returns?" without ever writing
+    to the data.
+    """
+    if signal_col not in df.columns:
+        raise KeyError(signal_col)
+    if price_col not in df.columns:
+        raise KeyError(price_col)
+    if isinstance(df.index, pd.MultiIndex):
+        return {"error": "Signal analysis expects a single-index series. "
+                         "For futures, chart a continuous series first."}
+
+    sig = pd.to_numeric(df[signal_col], errors="coerce")
+    price = pd.to_numeric(df[price_col], errors="coerce")
+    if sig.notna().sum() < 10 or price.notna().sum() < 10:
+        return {"error": "Not enough numeric data in the chosen columns."}
+
+    # IC across horizons.
+    ic_rows = []
+    for h in horizons:
+        fwd = price.shift(-h) / price - 1.0
+        pair = pd.concat([sig, fwd], axis=1, keys=["s", "f"]).dropna()
+        if len(pair) < 10:
+            ic_rows.append({"horizon": h, "n": len(pair), "ic_spearman": None,
+                            "ic_pearson": None, "mean_fwd": None})
+            continue
+        ic_s = _spearman(pair["s"], pair["f"])
+        ic_p = pair["s"].corr(pair["f"])  # Pearson (scipy-free)
+        ic_rows.append({
+            "horizon": h,
+            "n": int(len(pair)),
+            "ic_spearman": _clean_float(ic_s),
+            "ic_pearson": _clean_float(ic_p),
+            "mean_fwd": _clean_float(pair["f"].mean()),
+        })
+
+    # Quantile buckets at the chosen horizon.
+    fwd = price.shift(-bucket_horizon) / price - 1.0
+    pair = pd.concat([sig, fwd], axis=1, keys=["s", "f"]).dropna()
+    bucket_data: dict[str, Any] = {"horizon": bucket_horizon, "labels": [],
+                                   "mean_fwd": [], "counts": [], "monotonic": None}
+    if len(pair) >= buckets * 2 and pair["s"].nunique() >= buckets:
+        try:
+            qs = pd.qcut(pair["s"], buckets, labels=False, duplicates="drop")
+            grp = pair.groupby(qs)["f"]
+            means = grp.mean()
+            counts = grp.size()
+            n_b = len(means)
+            bucket_data["labels"] = [f"Q{i + 1}" for i in range(n_b)]
+            bucket_data["mean_fwd"] = [_clean_float(v) for v in means.values]
+            bucket_data["counts"] = [int(c) for c in counts.values]
+            vals = list(means.values)
+            inc = all(vals[i] <= vals[i + 1] for i in range(len(vals) - 1))
+            dec = all(vals[i] >= vals[i + 1] for i in range(len(vals) - 1))
+            bucket_data["monotonic"] = inc or dec
+            # Long-short spread: top minus bottom bucket.
+            bucket_data["long_short"] = _clean_float(vals[-1] - vals[0]) if vals else None
+        except (ValueError, IndexError):
+            pass
+
+    primary = ic_rows[0] if ic_rows else {}
+    return {
+        "signal": str(signal_col),
+        "price": str(price_col),
+        "ic": ic_rows,
+        "buckets": bucket_data,
+        "primary_ic_spearman": primary.get("ic_spearman"),
     }
 
 

@@ -1,0 +1,97 @@
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <span class="label-mono">Signal</span>
+    <select class="form-select form-select-sm" style="width:150px;" onchange="loadSignal()" id="sig-signal">
+        {% for c in columns %}<option value="{{ c }}" {% if c == signal_col %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+    <span class="label-mono">vs price</span>
+    <select class="form-select form-select-sm" style="width:130px;" onchange="loadSignal()" id="sig-price">
+        {% for c in columns %}<option value="{{ c }}" {% if c == price_col %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+    <span class="label-mono">bucket horizon</span>
+    <select class="form-select form-select-sm" style="width:80px;" onchange="loadSignal()" id="sig-horizon">
+        {% for h in [1,5,10,20] %}<option value="{{ h }}" {% if h == horizon %}selected{% endif %}>{{ h }}</option>{% endfor %}
+    </select>
+</div>
+
+{% if stats.error %}
+<p class="text-warning"><i class="bi bi-exclamation-triangle"></i> {{ stats.error }}</p>
+{% else %}
+<div class="row g-3">
+    <div class="col-lg-5">
+        <div class="qt-panel">
+            <div class="qt-panel-head"><span class="qt-panel-head-title"><i class="bi bi-graph-up-arrow"></i> Information Coefficient</span></div>
+            <div class="qt-panel-body dense">
+                <table class="table table-sm mb-0" style="font-family:var(--mono); font-size:0.75rem;">
+                    <thead><tr><th>Horizon</th><th class="text-end">IC (Spearman)</th><th class="text-end">IC (Pearson)</th><th class="text-end">n</th></tr></thead>
+                    <tbody>
+                        {% for r in stats.ic %}
+                        <tr>
+                            <td>+{{ r.horizon }}</td>
+                            <td class="text-end {% if r.ic_spearman is not none and r.ic_spearman >= 0 %}text-success{% elif r.ic_spearman is not none %}text-danger{% endif %}">
+                                {{ "%+.3f"|format(r.ic_spearman) if r.ic_spearman is not none else '·' }}</td>
+                            <td class="text-end">{{ "%+.3f"|format(r.ic_pearson) if r.ic_pearson is not none else '·' }}</td>
+                            <td class="text-end text-muted">{{ "{:,}".format(r.n) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <p class="label-mono mt-2 mb-0" style="color:var(--ink-4)">IC = rank correlation of signal with forward return. |IC| &gt; ~0.03 over many names is often considered tradable.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <div class="qt-panel">
+            <div class="qt-panel-head">
+                <span class="qt-panel-head-title"><i class="bi bi-bar-chart-steps"></i> Mean forward return by signal quantile (+{{ stats.buckets.horizon }})</span>
+                {% if stats.buckets.monotonic is not none %}
+                <span class="badge {% if stats.buckets.monotonic %}bg-success{% else %}bg-secondary{% endif %}">{{ 'monotonic' if stats.buckets.monotonic else 'non-monotonic' }}</span>
+                {% endif %}
+            </div>
+            <div class="qt-panel-body">
+                {% if stats.buckets.labels %}
+                <div style="position:relative; height:230px;"><canvas id="sig-bucket-canvas"></canvas></div>
+                {% if stats.buckets.long_short is not none %}
+                <p class="label-mono mt-2 mb-0">Long-short (Q{{ stats.buckets.labels|length }} − Q1):
+                    <span class="{% if stats.buckets.long_short >= 0 %}text-success{% else %}text-danger{% endif %}">{{ "%+.3f"|format(stats.buckets.long_short * 100) }}%</span> per {{ stats.buckets.horizon }}-period hold</p>
+                {% endif %}
+                {% else %}
+                <p class="text-muted">Not enough distinct signal values to form quantile buckets.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+function loadSignal() {
+    const s = document.getElementById('sig-signal').value;
+    const p = document.getElementById('sig-price').value;
+    const h = document.getElementById('sig-horizon').value;
+    let url = `/api/analysis/signal/${LIB}/${SYM}?signal_col=${encodeURIComponent(s)}&price_col=${encodeURIComponent(p)}&horizon=${h}` + buildQueryParam();
+    htmx.ajax("GET", url, "#analysis-body");
+}
+(function() {
+    const stats = {{ stats_json | safe }};
+    const canvas = document.getElementById('sig-bucket-canvas');
+    if (!canvas || typeof Chart === 'undefined' || !stats.buckets || !stats.buckets.labels) return;
+    if (window._sigChart) { window._sigChart.destroy(); window._sigChart = null; }
+    const css = getComputedStyle(document.documentElement);
+    const up = css.getPropertyValue('--up').trim() || '#22c55e';
+    const down = css.getPropertyValue('--down').trim() || '#ef4444';
+    const grid = css.getPropertyValue('--chart-grid').trim() || 'rgba(255,255,255,0.05)';
+    const tick = css.getPropertyValue('--chart-tick').trim() || '#888';
+    const data = stats.buckets.mean_fwd.map(v => v == null ? 0 : v * 100);
+    window._sigChart = new Chart(canvas, {
+        type: 'bar',
+        data: { labels: stats.buckets.labels, datasets: [{
+            label: 'Mean fwd return %', data: data,
+            backgroundColor: data.map(v => v >= 0 ? up : down), borderWidth: 0 }] },
+        options: { responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false },
+                tooltip: { callbacks: { label: c => c.parsed.y.toFixed(3) + '%' } } },
+            scales: { x: { ticks: { color: tick }, grid: { display: false } },
+                      y: { ticks: { color: tick, callback: v => v + '%' }, grid: { color: grid } } } }
+    });
+})();
+</script>

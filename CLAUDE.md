@@ -44,7 +44,8 @@ This viewer is meant for production market data, so **writes are disabled by def
 ## Analysis features (all read-only)
 
 `core/analysis.py` holds pure functions adapted from dtale, surfaced via `web/routes/analysis.py` (HTMX partials in `templates/partials/analysis_*.html`) and as MCP tools:
-- `describe_frame` (per-column stats incl. skew/kurtosis), `column_analysis` (numpy histogram / value-counts + IQR outliers), `correlation_matrix` (pearson/spearman/kendall), `quality_report` (missing/dup/constant + `timeseries_gaps` for calendar holes/monotonicity), `returns_stats` (CAGR, ann. vol, Sharpe, max drawdown, hit-rate — period inferred from index spacing).
+- `describe_frame` (per-column stats incl. skew/kurtosis), `column_analysis` (numpy histogram / value-counts + IQR outliers), `correlation_matrix` (pearson/spearman/kendall), `quality_report` (missing/dup/constant + `timeseries_gaps` for calendar holes/monotonicity), `returns_stats` (CAGR, ann. vol, Sharpe, max drawdown, hit-rate — period inferred from index spacing), `signal_analysis` (Information Coefficient vs forward returns across horizons + quantile-bucket forward returns).
+- **No scipy dependency**: Spearman is computed as Pearson-of-ranks (`_spearman`), and `correlation_matrix(spearman)` ranks then correlates. Kendall uses scipy if present, else silently falls back to spearman. Keep new stats scipy-free unless you add scipy to requirements.
 - All analysis endpoints accept the same `query` param as the data table and apply `_execute_query`, so analysis matches the on-screen view. Export (`/api/export/{csv,parquet}/...`) and code-export (`/api/code/...`, reproducible pandas) are likewise read-only and query-aware.
 
 ## Connection Management

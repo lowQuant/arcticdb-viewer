@@ -123,6 +123,39 @@ async def analysis_returns(request: Request, lib: str, sym: str, col: str = "", 
         return HTMLResponse(f"<p class='text-danger'>Error: {e}</p>", status_code=500)
 
 
+# ── Signal analysis ──
+
+@router.get("/api/analysis/signal/{lib}/{sym:path}", response_class=HTMLResponse)
+async def analysis_signal(request: Request, lib: str, sym: str,
+                          signal_col: str = "", price_col: str = "",
+                          horizon: int = 1, query: str = ""):
+    try:
+        df = _read_view(lib, sym, query)
+        num = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+        lower = {c.lower(): c for c in num}
+        if not price_col:
+            price_col = lower.get("close") or lower.get("price") or (num[0] if num else "")
+        if not signal_col:
+            # Pick a numeric column that isn't the obvious OHLCV set.
+            ohlcv = {"open", "high", "low", "close", "price", "volume", "vwap"}
+            cand = [c for c in num if c.lower() not in ohlcv and c != price_col]
+            signal_col = cand[0] if cand else (num[0] if num else "")
+        stats = (an.signal_analysis(df, signal_col, price_col, bucket_horizon=horizon)
+                 if signal_col and price_col else {"error": "Need at least one numeric column."})
+        return templates.TemplateResponse("partials/analysis_signal.html", {
+            "request": request,
+            "library": lib, "symbol": sym,
+            "columns": num,
+            "signal_col": signal_col, "price_col": price_col, "horizon": horizon,
+            "stats": stats,
+            "stats_json": json.dumps(stats),
+        })
+    except KeyError as e:
+        return HTMLResponse(f"<p class='text-warning'>Column not found: {e}</p>")
+    except Exception as e:
+        return HTMLResponse(f"<p class='text-danger'>Error: {e}</p>", status_code=500)
+
+
 # ── Export (CSV / Parquet) ──
 
 @router.get("/api/export/{fmt}/{lib}/{sym:path}")

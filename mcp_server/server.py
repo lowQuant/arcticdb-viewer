@@ -114,6 +114,16 @@ def returns_summary(library: str, symbol: str, column: str = "close") -> dict[st
     return an.returns_stats(df, column)
 
 
+@mcp.tool()
+def signal_analysis(library: str, symbol: str, signal_column: str,
+                    price_column: str = "close", bucket_horizon: int = 1) -> dict[str, Any]:
+    """Evaluate a predictive signal: Information Coefficient (rank/Pearson
+    correlation of the signal with forward returns) across horizons, plus
+    mean forward return per signal quantile bucket. Read-only."""
+    df = ops.read_data(library, symbol)
+    return an.signal_analysis(df, signal_column, price_column, bucket_horizon=bucket_horizon)
+
+
 # ── Write tools (only registered when not in read-only mode) ──
 
 def _write_data(library: str, symbol: str, csv_data: str) -> str:

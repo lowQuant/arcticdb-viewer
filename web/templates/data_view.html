@@ -499,6 +499,7 @@
                 <li class="nav-item"><a class="nav-link" href="#" data-tab="correlation" onclick="selectAnalyzeTab('correlation'); return false;">Correlation</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-tab="quality" onclick="selectAnalyzeTab('quality'); return false;">Quality</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-tab="returns" onclick="selectAnalyzeTab('returns'); return false;">Returns</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-tab="signal" onclick="selectAnalyzeTab('signal'); return false;">Signal</a></li>
             </ul>
             <button class="btn btn-sm btn-outline-secondary" onclick="toggleAnalyze()" title="Close"><i class="bi bi-x-lg"></i></button>
         </div>
@@ -1196,6 +1197,7 @@
         else if (tab === "correlation")url = `/api/analysis/correlation/${LIB}/${SYM}?method=pearson`;
         else if (tab === "quality")    url = `/api/analysis/quality/${LIB}/${SYM}?1=1`;
         else if (tab === "returns")    url = `/api/analysis/returns/${LIB}/${SYM}?1=1`;
+        else if (tab === "signal")     url = `/api/analysis/signal/${LIB}/${SYM}?1=1`;
         url += buildQueryParam();
         htmx.ajax("GET", url, "#analysis-body");
     }
