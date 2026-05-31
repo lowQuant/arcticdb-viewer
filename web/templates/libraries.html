@@ -10,9 +10,11 @@
             <h4><i class="bi bi-stack"></i> Libraries</h4>
         </div>
         <div class="page-head-meta">
+            {% if not read_only() %}
             <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#create-form">
                 <i class="bi bi-plus-lg"></i> New library
             </button>
+            {% endif %}
         </div>
     </div>
 

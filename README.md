@@ -16,6 +16,20 @@ Browse libraries and symbols, view and edit DataFrames with pagination, filterin
 
 ## Features
 
+### Safe by default — read-only mode 🔒
+Built for **production market data**: writes are **disabled by default**, so browsing, charting, and every analysis tool are guaranteed never to touch your ArcticDB. A `READ-ONLY` badge shows in the navbar; edit/add/delete/upload controls are hidden, and the same guard protects the MCP server. To allow edits, start with `ADBVIEW_READONLY=0`. The guard lives at a single core chokepoint, so there is no code path that can mutate data while locked.
+
+### Analysis (read-only, adapted from dtale)
+- **Describe** — per-column count, missing, distinct, mean/std/min/quartiles/max, skew & kurtosis
+- **Distribution** — histogram (numeric) or value counts (categorical) + IQR outlier detection to spot bad ticks
+- **Correlation** — Pearson / Spearman / Kendall matrix as a heatmap (signal analysis)
+- **Data quality** — missing cells, duplicate rows/index, constant columns, plus **time-series integrity** (calendar gaps, duplicate timestamps, monotonicity) tuned for OHLCV
+- **Returns / risk** — total return, CAGR, annualised volatility, Sharpe, max drawdown, hit-rate for a price column (annualisation inferred from index spacing)
+- **Export** — download the current (filtered) view as **CSV** or **Parquet**
+- **Code export** — copy reproducible pandas/ArcticDB code for the active query pipeline
+
+All analysis respects the active query pipeline, so it always matches what's on screen.
+
 ### Web UI
 - **Connection manager** — connect to S3, LMDB (local), or in-memory backends. Auto-detects `.env` credentials
 - **Library browser** — list, create, and delete libraries
@@ -34,20 +48,23 @@ Browse libraries and symbols, view and edit DataFrames with pagination, filterin
 - **Dark + light themes** — sun/moon toggle in the navbar, preference persisted to localStorage
 
 ### MCP Server
-10 tools for full ArcticDB CRUD via LLM:
+Read & analysis tools are **always** available; write tools are only registered when `ADBVIEW_READONLY=0`.
+
+**Read & analysis (always on):**
 
 | Tool | Description |
 |------|-------------|
 | `list_libraries` | List all libraries |
-| `create_library` | Create a new library |
-| `delete_library` | Delete a library |
 | `list_symbols` | List symbols in a library |
 | `describe_symbol` | Get metadata (rows, columns, dtypes) |
 | `read_data` | Read data with pagination and column selection |
-| `write_data` | Write CSV data to a symbol (overwrites) |
-| `update_data` | Update rows in a date range |
-| `append_data` | Append CSV rows to a symbol |
-| `delete_symbol` | Delete a symbol |
+| `describe_statistics` | Per-column summary stats (mean/std/quartiles/skew/kurtosis) |
+| `correlation_matrix` | Pearson/Spearman/Kendall correlation of numeric columns |
+| `column_distribution` | Histogram / value counts + IQR outliers for one column |
+| `data_quality_report` | Missing/duplicate/constant + time-series gap checks |
+| `returns_summary` | CAGR, ann. vol, Sharpe, max drawdown, hit-rate for a price column |
+
+**Write (only when `ADBVIEW_READONLY=0`):** `create_library`, `delete_library`, `write_data`, `update_data`, `append_data`, `delete_symbol`
 
 ## Installation
 

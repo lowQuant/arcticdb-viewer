@@ -1,0 +1,54 @@
+<div class="table-responsive">
+    <table class="table table-sm mb-0">
+        <thead>
+            <tr>
+                <th>Column</th>
+                <th>Type</th>
+                <th class="text-end">Count</th>
+                <th class="text-end">Missing</th>
+                <th class="text-end">Distinct</th>
+                <th class="text-end">Mean</th>
+                <th class="text-end">Std</th>
+                <th class="text-end">Min</th>
+                <th class="text-end">25%</th>
+                <th class="text-end">Median</th>
+                <th class="text-end">75%</th>
+                <th class="text-end">Max</th>
+                <th class="text-end">Skew</th>
+                <th class="text-end">Kurt</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% macro num(v) %}{% if v is none %}<span style="color:var(--ink-4)">·</span>{% else %}{{ "%.4g"|format(v) }}{% endif %}{% endmacro %}
+            {% for r in rows %}
+            <tr>
+                <td style="color:var(--ink-1)">{{ r.column }}</td>
+                <td><span class="badge bg-secondary">{{ r.dtype }}</span></td>
+                <td class="text-end">{{ "{:,}".format(r.count) }}</td>
+                <td class="text-end {% if r.missing %}text-warning{% else %}text-muted{% endif %}">
+                    {{ r.missing }}{% if r.missing %} <span class="text-muted">({{ r.missing_pct }}%)</span>{% endif %}
+                </td>
+                <td class="text-end">{{ "{:,}".format(r.distinct) }}</td>
+                {% if r.kind == 'numeric' %}
+                <td class="text-end">{{ num(r.mean) }}</td>
+                <td class="text-end">{{ num(r.std) }}</td>
+                <td class="text-end">{{ num(r.min) }}</td>
+                <td class="text-end">{{ num(r.q25) }}</td>
+                <td class="text-end">{{ num(r.median) }}</td>
+                <td class="text-end">{{ num(r.q75) }}</td>
+                <td class="text-end">{{ num(r.max) }}</td>
+                <td class="text-end">{{ num(r.skew) }}</td>
+                <td class="text-end">{{ num(r.kurtosis) }}</td>
+                {% elif r.kind == 'datetime' %}
+                <td class="text-end text-muted" colspan="2">{{ r.min }}</td>
+                <td class="text-end text-muted" colspan="5">→ {{ r.max }}</td>
+                <td colspan="2"></td>
+                {% else %}
+                <td class="text-end text-muted" colspan="8">top: <code>{{ r.top }}</code> ×{{ r.top_freq }}</td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<p class="label-mono mt-2 mb-0">{{ "{:,}".format(n_rows) }} rows analysed (reflects active query)</p>

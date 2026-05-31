@@ -27,7 +27,22 @@ if __name__ == "__main__":
         default=None,
         help="Name of a saved connection to use (overrides .env detection)",
     )
+    parser.add_argument(
+        "--allow-writes",
+        action="store_true",
+        help="Enable write tools (default: read-only, also controllable via ADBVIEW_READONLY)",
+    )
     args = parser.parse_args()
+
+    # Resolve read-only BEFORE importing the server, because write tools are
+    # registered conditionally at import time.
+    from core.settings import set_read_only, is_read_only
+    if args.allow_writes:
+        set_read_only(False)
+    print(
+        f"[arcticdb-viewer] MCP starting in "
+        f"{'READ-ONLY' if is_read_only() else 'READ-WRITE'} mode."
+    )
 
     uri: str | None = None
     name: str | None = None

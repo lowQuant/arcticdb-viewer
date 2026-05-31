@@ -14,13 +14,15 @@ Three-layer design with a shared core:
 core/              Shared ArcticDB CRUD operations (pure Python)
   connection.py    ConnectionManager: multi-instance, save/load ~/.adbview/connections.json
   operations.py    All library/symbol/data functions used by both web and MCP
+  settings.py      Read-only mode + write-guard (single chokepoint)
+  analysis.py      Read-only analytics (describe/correlation/quality/returns) — pure pandas/numpy
 
 web/               FastAPI + Jinja2 + HTMX + Bootstrap 5 (dark + light themes)
-  app.py           FastAPI app, connection middleware, template globals
-  routes/          connections.py, libraries.py, symbols.py, data.py
+  app.py           FastAPI app, connection middleware, template globals, ReadOnlyError handler
+  routes/          connections.py, libraries.py, symbols.py, data.py, analysis.py
   templates/       Server-rendered HTML with HTMX partials
 
-mcp_server/        MCP server with 10 CRUD tools
+mcp_server/        MCP server (read + analysis tools always; write tools gated by read-only)
   server.py        Uses mcp.server.fastmcp.FastMCP, supports stdio + SSE transport
 
 run_web.py         Web UI entry point (uvicorn, port 8000)
@@ -28,6 +30,22 @@ run_mcp.py         MCP server entry point (--transport stdio|sse), auto-connects
 ```
 
 The core layer is the single source of truth for all ArcticDB interactions. Both the web UI and MCP server import from `core.operations`. Never access ArcticDB directly from routes or MCP tools.
+
+## Read-only mode (safe by default)
+
+This viewer is meant for production market data, so **writes are disabled by default**. The model:
+
+- `core/settings.py` resolves `is_read_only()` from env `ADBVIEW_READONLY` (default ON; only `0/false/no/off` enables writes). `guard_write(op)` raises `ReadOnlyError`.
+- Every mutating function in `core/operations.py` calls `guard_write(...)` first — the single chokepoint protects web routes **and** MCP tools alike. Never add a write path that bypasses it.
+- Web: `templates.env.globals["read_only"]` gates all destructive UI (edit/add/delete/upload). Mutation routes `except ReadOnlyError: raise` so the central `@app.exception_handler(ReadOnlyError)` returns a 403 toast. `ReadOnlyError`'s message is ASCII-only because it can land in an `HX-Trigger` header (latin-1).
+- MCP: write tools are only registered when `not is_read_only()` (see `_WRITE_TOOLS` in `mcp_server/server.py`); read + analysis tools are always present.
+- Navbar shows a `READ-ONLY` badge; `JS const READ_ONLY` short-circuits `editCell`.
+
+## Analysis features (all read-only)
+
+`core/analysis.py` holds pure functions adapted from dtale, surfaced via `web/routes/analysis.py` (HTMX partials in `templates/partials/analysis_*.html`) and as MCP tools:
+- `describe_frame` (per-column stats incl. skew/kurtosis), `column_analysis` (numpy histogram / value-counts + IQR outliers), `correlation_matrix` (pearson/spearman/kendall), `quality_report` (missing/dup/constant + `timeseries_gaps` for calendar holes/monotonicity), `returns_stats` (CAGR, ann. vol, Sharpe, max drawdown, hit-rate — period inferred from index spacing).
+- All analysis endpoints accept the same `query` param as the data table and apply `_execute_query`, so analysis matches the on-screen view. Export (`/api/export/{csv,parquet}/...`) and code-export (`/api/code/...`, reproducible pandas) are likewise read-only and query-aware.
 
 ## Connection Management
 

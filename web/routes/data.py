@@ -7,6 +7,7 @@ from fastapi import APIRouter, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from core import operations as ops
+from core.settings import ReadOnlyError
 from web.app import templates
 
 router = APIRouter()
@@ -1015,6 +1016,8 @@ async def edit_cell(request: Request, lib: str, sym: str):
             content=str(new_value),
             headers={"HX-Trigger": '{"showToast":{"message":"Cell updated successfully"}}'},
         )
+    except ReadOnlyError:
+        raise
     except Exception as e:
         return HTMLResponse(
             content=str(e),
@@ -1037,6 +1040,8 @@ async def delete_rows(request: Request, lib: str, sym: str):
             content="",
             headers={"HX-Trigger": '{"showToast":{"message":"Rows deleted successfully"},"refreshTable":"true"}'},
         )
+    except ReadOnlyError:
+        raise
     except Exception as e:
         return HTMLResponse(
             content="",
@@ -1078,6 +1083,8 @@ async def create_symbol(request: Request, lib: str):
 
         ops.write_data(lib, symbol, df)
         return HTMLResponse(content="OK", status_code=200)
+    except ReadOnlyError:
+        raise
     except Exception as e:
         return HTMLResponse(content=str(e), status_code=400)
 
@@ -1117,6 +1124,8 @@ async def add_row(request: Request, lib: str, sym: str):
         ops.write_data(lib, sym, combined)
 
         return HTMLResponse(content="OK", status_code=200)
+    except ReadOnlyError:
+        raise
     except Exception as e:
         return HTMLResponse(content=str(e), status_code=400)
 
@@ -1134,6 +1143,8 @@ async def upload_csv(request: Request, lib: str, symbol: str = Form(...), file: 
             "library": lib,
             "symbols": symbols,
         }, headers={"HX-Trigger": f'{{"showToast":{{"message":"Uploaded {symbol} ({len(df)} rows)"}}}}'})
+    except ReadOnlyError:
+        raise
     except Exception as e:
         return HTMLResponse(
             content="",

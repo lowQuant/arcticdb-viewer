@@ -5,6 +5,7 @@ from typing import Any
 import pandas as pd
 
 from core.connection import get_arctic
+from core.settings import guard_write
 
 
 # ── Library operations ──
@@ -14,10 +15,12 @@ def list_libraries() -> list[str]:
 
 
 def create_library(name: str) -> None:
+    guard_write("create_library")
     get_arctic().create_library(name)
 
 
 def delete_library(name: str) -> None:
+    guard_write("delete_library")
     get_arctic().delete_library(name)
 
 
@@ -73,6 +76,7 @@ def get_description(library: str, symbol: str) -> dict[str, Any]:
 
 
 def delete_symbol(library: str, symbol: str) -> None:
+    guard_write("delete_symbol")
     lib = get_arctic()[library]
     lib.delete(symbol)
 
@@ -98,15 +102,18 @@ def read_data(
 
 
 def write_data(library: str, symbol: str, data: pd.DataFrame) -> None:
+    guard_write("write_data")
     lib = get_arctic()[library]
     lib.write(symbol, data)
 
 
 def update_data(library: str, symbol: str, data: pd.DataFrame) -> None:
+    guard_write("update_data")
     lib = get_arctic()[library]
     lib.update(symbol, data)
 
 
 def append_data(library: str, symbol: str, data: pd.DataFrame) -> None:
+    guard_write("append_data")
     lib = get_arctic()[library]
     lib.append(symbol, data)

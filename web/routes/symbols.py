@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from core import operations as ops
+from core.settings import ReadOnlyError
 from web.app import templates
 
 router = APIRouter()
@@ -34,6 +35,8 @@ async def list_symbols(request: Request, lib: str, q: str = ""):
 async def delete_symbol(request: Request, lib: str, sym: str):
     try:
         ops.delete_symbol(lib, sym)
+    except ReadOnlyError:
+        raise
     except Exception as e:
         return HTMLResponse(
             headers={"HX-Trigger": f'{{"showToast":{{"message":"Error: {e}","type":"error"}}}}'},

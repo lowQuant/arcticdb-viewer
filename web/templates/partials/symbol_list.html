@@ -8,6 +8,7 @@
         </a>
         <div class="d-flex gap-1 align-items-center">
             <span class="label-mono" style="color: var(--ink-4);">→</span>
+            {% if not read_only() %}
             <button class="btn btn-sm btn-outline-danger"
                     hx-delete="/libraries/{{ library }}/symbols/{{ sym }}"
                     hx-target="#symbol-list"
@@ -17,6 +18,7 @@
                     title="Delete symbol">
                 <i class="bi bi-trash"></i>
             </button>
+            {% endif %}
         </div>
     </div>
     {% endfor %}

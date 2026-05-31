@@ -1,0 +1,94 @@
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <span class="label-mono">Column</span>
+    <select class="form-select form-select-sm" style="width:180px;"
+            onchange="loadColumnAnalysis(this.value)">
+        {% for c in columns %}
+        <option value="{{ c }}" {% if c == selected %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+    </select>
+    <span class="badge bg-secondary">{{ report.dtype }}</span>
+    <span class="label-mono">{{ "{:,}".format(report.count) }} non-null · {{ "{:,}".format(report.distinct) }} distinct{% if report.missing %} · {{ report.missing }} missing{% endif %}</span>
+</div>
+
+{% if report.numeric %}
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div style="position:relative; height:280px;">
+            <canvas id="col-hist-canvas"></canvas>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="qt-panel">
+            <div class="qt-panel-head"><span class="qt-panel-head-title"><i class="bi bi-rulers"></i> Statistics</span></div>
+            <div class="qt-panel-body dense">
+                <table class="table table-sm mb-0">
+                    <tbody style="font-family:var(--mono); font-size:0.78rem;">
+                        <tr><td class="text-muted">mean</td><td class="text-end">{{ "%.6g"|format(report.stats.mean) if report.stats.mean is not none else '·' }}</td></tr>
+                        <tr><td class="text-muted">std</td><td class="text-end">{{ "%.6g"|format(report.stats.std) if report.stats.std is not none else '·' }}</td></tr>
+                        <tr><td class="text-muted">min</td><td class="text-end">{{ "%.6g"|format(report.stats.min) if report.stats.min is not none else '·' }}</td></tr>
+                        <tr><td class="text-muted">median</td><td class="text-end">{{ "%.6g"|format(report.stats.median) if report.stats.median is not none else '·' }}</td></tr>
+                        <tr><td class="text-muted">max</td><td class="text-end">{{ "%.6g"|format(report.stats.max) if report.stats.max is not none else '·' }}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% if report.outliers %}
+        <div class="qt-panel mt-2">
+            <div class="qt-panel-head"><span class="qt-panel-head-title"><i class="bi bi-exclamation-diamond"></i> Outliers (IQR)</span></div>
+            <div class="qt-panel-body dense">
+                {% if report.outliers.count %}
+                <div class="mb-1"><span class="badge bg-warning">{{ report.outliers.count }} outliers</span>
+                    <span class="label-mono">{{ report.outliers.pct }}% of values</span></div>
+                {% else %}
+                <div class="mb-1"><span class="badge bg-success">none</span></div>
+                {% endif %}
+                <div class="label-mono" style="line-height:1.6;">
+                    fence: [{{ "%.4g"|format(report.outliers.lower) }}, {{ "%.4g"|format(report.outliers.upper) }}]<br>
+                    IQR: {{ "%.4g"|format(report.outliers.iqr) }}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<div style="position:relative; height:320px;">
+    <canvas id="col-hist-canvas"></canvas>
+</div>
+{% endif %}
+
+<script>
+(function() {
+    const report = {{ report_json | safe }};
+    const canvas = document.getElementById('col-hist-canvas');
+    if (!canvas || typeof Chart === 'undefined') return;
+    if (window._colChart) { window._colChart.destroy(); window._colChart = null; }
+    const css = getComputedStyle(document.documentElement);
+    const accent = css.getPropertyValue('--accent').trim() || '#f5a524';
+    const grid = css.getPropertyValue('--chart-grid').trim() || 'rgba(255,255,255,0.05)';
+    const tick = css.getPropertyValue('--chart-tick').trim() || '#888';
+
+    let labels, data, title;
+    if (report.numeric) {
+        labels = report.histogram.labels;
+        data = report.histogram.counts;
+        title = 'Frequency';
+    } else {
+        labels = report.value_counts.values;
+        data = report.value_counts.counts;
+        title = 'Count';
+    }
+    window._colChart = new Chart(canvas, {
+        type: 'bar',
+        data: { labels: labels, datasets: [{ label: title, data: data, backgroundColor: accent, borderWidth: 0 }] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { ticks: { color: tick, maxRotation: 60, minRotation: 0, font: { size: 9 } }, grid: { display: false } },
+                y: { ticks: { color: tick }, grid: { color: grid } }
+            }
+        }
+    });
+})();
+</script>

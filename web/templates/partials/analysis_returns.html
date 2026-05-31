@@ -1,0 +1,33 @@
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <span class="label-mono">Price column</span>
+    <select class="form-select form-select-sm" style="width:160px;" onchange="loadReturns(this.value)">
+        {% for c in columns %}
+        <option value="{{ c }}" {% if c == selected %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+    </select>
+    <span class="label-mono">simple returns; risk-free = 0</span>
+</div>
+
+{% if stats.error %}
+<p class="text-warning"><i class="bi bi-exclamation-triangle"></i> {{ stats.error }}</p>
+{% else %}
+{% macro pct(v) %}{% if v is none %}·{% else %}{{ "%+.2f"|format(v * 100) }}%{% endif %}{% endmacro %}
+{% macro signcls(v) %}{% if v is none %}{% elif v >= 0 %}text-success{% else %}text-danger{% endif %}{% endmacro %}
+<div class="row g-2">
+    <div class="col-6 col-md-3"><div class="qt-panel" style="padding:0.6rem 0.8rem;"><div class="metric"><span class="metric-value {{ signcls(stats.total_return) }}">{{ pct(stats.total_return) }}</span><span class="metric-label">Total return</span></div></div></div>
+    <div class="col-6 col-md-3"><div class="qt-panel" style="padding:0.6rem 0.8rem;"><div class="metric"><span class="metric-value {{ signcls(stats.cagr) }}">{{ pct(stats.cagr) }}</span><span class="metric-label">CAGR</span></div></div></div>
+    <div class="col-6 col-md-3"><div class="qt-panel" style="padding:0.6rem 0.8rem;"><div class="metric"><span class="metric-value">{{ pct(stats.ann_volatility) }}</span><span class="metric-label">Ann. volatility</span></div></div></div>
+    <div class="col-6 col-md-3"><div class="qt-panel" style="padding:0.6rem 0.8rem;"><div class="metric"><span class="metric-value {{ signcls(stats.sharpe) }}">{{ "%.2f"|format(stats.sharpe) if stats.sharpe is not none else '·' }}</span><span class="metric-label">Sharpe (ann.)</span></div></div></div>
+    <div class="col-6 col-md-3"><div class="qt-panel" style="padding:0.6rem 0.8rem;"><div class="metric"><span class="metric-value text-danger">{{ pct(stats.max_drawdown) }}</span><span class="metric-label">Max drawdown</span></div></div></div>
+    <div class="col-6 col-md-3"><div class="qt-panel" style="padding:0.6rem 0.8rem;"><div class="metric"><span class="metric-value">{{ stats.hit_rate }}%</span><span class="metric-label">Hit rate (up periods)</span></div></div></div>
+    <div class="col-6 col-md-3"><div class="qt-panel" style="padding:0.6rem 0.8rem;"><div class="metric"><span class="metric-value text-success">{{ pct(stats.best_period) }}</span><span class="metric-label">Best period</span></div></div></div>
+    <div class="col-6 col-md-3"><div class="qt-panel" style="padding:0.6rem 0.8rem;"><div class="metric"><span class="metric-value text-danger">{{ pct(stats.worst_period) }}</span><span class="metric-label">Worst period</span></div></div></div>
+</div>
+<div class="d-flex gap-4 flex-wrap label-mono mt-3" style="font-size:0.72rem;">
+    <span>observations: <span style="color:var(--ink-1)">{{ "{:,}".format(stats.observations) }}</span></span>
+    <span>periods/year: <span style="color:var(--ink-1)">{{ stats.periods_per_year }}</span></span>
+    <span>return skew: <span style="color:var(--ink-1)">{{ "%.3f"|format(stats.skew) if stats.skew is not none else '·' }}</span></span>
+    <span>return kurtosis: <span style="color:var(--ink-1)">{{ "%.3f"|format(stats.kurtosis) if stats.kurtosis is not none else '·' }}</span></span>
+</div>
+<p class="label-mono mt-2 mb-0" style="color:var(--ink-4)">Annualisation period inferred from index spacing. Sanity-check against outliers in the Distribution tab.</p>
+{% endif %}

@@ -2,10 +2,12 @@
     <table class="table table-sm mb-0">
         <thead>
             <tr>
+                {% if not read_only() %}
                 <th style="width:30px;">
                     <input type="checkbox" class="form-check-input"
                            onchange="document.querySelectorAll('.row-checkbox').forEach(cb => { cb.checked = this.checked; }); toggleRowSelection(this);">
                 </th>
+                {% endif %}
                 <th style="width:50px; text-align: right;">#</th>
                 {% if has_index %}
                 <th class="user-select-none" style="cursor:pointer; color: var(--info) !important;"
@@ -33,11 +35,13 @@
             {% for idx, row in df.iterrows() %}
             {% set row_num = loop.index0 + page * page_size %}
             <tr>
+                {% if not read_only() %}
                 <td>
                     <input type="checkbox" class="form-check-input row-checkbox"
                            data-row-idx="{{ row_num }}"
                            onchange="toggleRowSelection(this)">
                 </td>
+                {% endif %}
                 <td class="text-muted" style="text-align: right;">{{ row_num }}</td>
                 {% if has_index %}
                 <td style="color: var(--info);">{{ idx }}</td>

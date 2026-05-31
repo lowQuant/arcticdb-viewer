@@ -1,0 +1,60 @@
+<div class="row g-2 mb-3">
+    <div class="col-auto"><div class="qt-panel" style="padding:0.5rem 0.75rem;"><div class="metric"><span class="metric-value">{{ "{:,}".format(report.rows) }}</span><span class="metric-label">Rows</span></div></div></div>
+    <div class="col-auto"><div class="qt-panel" style="padding:0.5rem 0.75rem;"><div class="metric"><span class="metric-value">{{ report.columns }}</span><span class="metric-label">Columns</span></div></div></div>
+    <div class="col-auto"><div class="qt-panel" style="padding:0.5rem 0.75rem;"><div class="metric"><span class="metric-value {% if report.total_missing %}text-warning{% endif %}">{{ "{:,}".format(report.total_missing) }}</span><span class="metric-label">Missing cells ({{ report.total_missing_pct }}%)</span></div></div></div>
+    <div class="col-auto"><div class="qt-panel" style="padding:0.5rem 0.75rem;"><div class="metric"><span class="metric-value {% if report.duplicate_rows %}text-warning{% endif %}">{{ "{:,}".format(report.duplicate_rows) }}</span><span class="metric-label">Duplicate rows</span></div></div></div>
+    <div class="col-auto"><div class="qt-panel" style="padding:0.5rem 0.75rem;"><div class="metric"><span class="metric-value {% if report.duplicate_index %}text-warning{% endif %}">{{ "{:,}".format(report.duplicate_index) }}</span><span class="metric-label">Dup. index</span></div></div></div>
+    <div class="col-auto"><div class="qt-panel" style="padding:0.5rem 0.75rem;"><div class="metric"><span class="metric-value">{{ report.memory_mb }}</span><span class="metric-label">Memory (MB)</span></div></div></div>
+</div>
+
+{% if report.constant_columns %}
+<div class="alert alert-warning py-2 mb-3">
+    <i class="bi bi-dash-circle"></i> <strong>Constant columns</strong> (single value — candidate to drop):
+    {% for c in report.constant_columns %}<code>{{ c }}</code> {% endfor %}
+</div>
+{% endif %}
+
+{% if report.timeseries %}
+{% set ts = report.timeseries %}
+<div class="qt-panel mb-3">
+    <div class="qt-panel-head"><span class="qt-panel-head-title"><i class="bi bi-calendar-range"></i> Time-series integrity</span></div>
+    <div class="qt-panel-body dense">
+        <div class="d-flex gap-4 flex-wrap label-mono mb-2" style="font-size:0.72rem;">
+            <span>range: <span style="color:var(--ink-1)">{{ ts.start[:10] }} → {{ ts.end[:10] }}</span></span>
+            <span>periods: <span style="color:var(--ink-1)">{{ "{:,}".format(ts.periods) }}</span></span>
+            <span>median spacing: <span style="color:var(--ink-1)">{{ ts.median_spacing_days }}d</span></span>
+            <span>sorted: {% if ts.monotonic_increasing %}<span class="text-success">yes</span>{% else %}<span class="text-danger">NO — index not monotonic</span>{% endif %}</span>
+            <span>dup timestamps: <span class="{% if ts.duplicate_timestamps %}text-warning{% else %}text-muted{% endif %}">{{ ts.duplicate_timestamps }}</span></span>
+            <span>large gaps: <span class="{% if ts.large_gaps %}text-warning{% else %}text-muted{% endif %}">{{ ts.large_gaps }}</span></span>
+        </div>
+        {% if ts.gap_samples %}
+        <div class="label-mono" style="font-size:0.7rem;">Largest gaps (after date → gap):</div>
+        <div class="d-flex flex-wrap gap-1 mt-1">
+            {% for g in ts.gap_samples %}<span class="badge bg-warning">{{ g.after[:10] }} → {{ g.gap_days }}d</span>{% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<div class="table-responsive">
+    <table class="table table-sm mb-0">
+        <thead><tr><th>Column</th><th>Type</th><th class="text-end">Missing</th><th class="text-end">Missing %</th><th class="text-end">Distinct</th></tr></thead>
+        <tbody>
+            {% for r in report.per_column %}
+            <tr>
+                <td style="color:var(--ink-1)">{{ r.column }}</td>
+                <td><span class="badge bg-secondary">{{ r.dtype }}</span></td>
+                <td class="text-end {% if r.missing %}text-warning{% else %}text-muted{% endif %}">{{ "{:,}".format(r.missing) }}</td>
+                <td class="text-end">
+                    <div style="display:inline-block; width:80px; height:6px; background:var(--bg-3); border-radius:3px; vertical-align:middle; overflow:hidden;">
+                        <div style="height:100%; width:{{ r.missing_pct }}%; background:var(--accent);"></div>
+                    </div>
+                    <span class="ms-1">{{ r.missing_pct }}%</span>
+                </td>
+                <td class="text-end">{{ "{:,}".format(r.distinct) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

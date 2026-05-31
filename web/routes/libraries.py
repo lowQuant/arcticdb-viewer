@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from core import operations as ops
+from core.settings import ReadOnlyError
 from web.app import templates
 
 router = APIRouter()
@@ -28,6 +29,8 @@ async def create_library(request: Request):
         )
     try:
         ops.create_library(name)
+    except ReadOnlyError:
+        raise
     except Exception as e:
         return HTMLResponse(
             headers={"HX-Trigger": f'{{"showToast":{{"message":"Error: {e}","type":"error"}}}}'},
@@ -45,6 +48,8 @@ async def create_library(request: Request):
 async def delete_library(request: Request, name: str):
     try:
         ops.delete_library(name)
+    except ReadOnlyError:
+        raise
     except Exception as e:
         return HTMLResponse(
             headers={"HX-Trigger": f'{{"showToast":{{"message":"Error: {e}","type":"error"}}}}'},

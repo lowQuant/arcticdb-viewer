@@ -242,12 +242,14 @@
         <button class="btn btn-sm btn-outline-secondary" onclick="toggleSidePane()" title="Toggle side pane">
             <i class="bi bi-layout-sidebar-reverse"></i> Side pane
         </button>
+        {% if not read_only() %}
         <button class="btn btn-sm btn-outline-danger"
                 hx-delete="/libraries/{{ library }}/symbols/{{ symbol }}"
                 hx-confirm="Delete symbol '{{ symbol }}'? This cannot be undone."
                 hx-on::after-request="if(event.detail.successful) window.location.href='/libraries/{{ library }}/symbols'">
             <i class="bi bi-trash"></i> Delete
         </button>
+        {% endif %}
     </div>
 </div>
 
@@ -299,6 +301,21 @@
         <button class="btn btn-sm btn-outline-info" onclick="toggleChart()">
             <i class="bi bi-graph-up"></i> Chart
         </button>
+        <button class="btn btn-sm btn-outline-info" onclick="toggleAnalyze()">
+            <i class="bi bi-clipboard-data"></i> Analyze
+        </button>
+        <div class="btn-group btn-group-sm">
+            <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" title="Export current view">
+                <i class="bi bi-download"></i> Export
+            </button>
+            <ul class="dropdown-menu dropdown-menu-dark">
+                <li class="px-2 py-1 eyebrow">Download current view</li>
+                <li><a class="dropdown-item" href="#" onclick="exportView('csv'); return false;"><i class="bi bi-filetype-csv"></i> CSV</a></li>
+                <li><a class="dropdown-item" href="#" onclick="exportView('parquet'); return false;"><i class="bi bi-file-earmark-binary"></i> Parquet</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="#" onclick="showCodeExport(); return false;"><i class="bi bi-code-slash"></i> Python code…</a></li>
+            </ul>
+        </div>
         <div class="toolbar-divider"></div>
         <div id="active-badges" class="d-flex align-items-center"></div>
     </div>
@@ -472,7 +489,27 @@
     </div>
 </div>
 
-<!-- Row actions bar -->
+<!-- Analyze panel (collapsible) -->
+<div id="analyze-section" style="display:none;" class="mb-3">
+    <div class="qt-panel">
+        <div class="qt-panel-head">
+            <ul class="nav nav-tabs" style="border-bottom:none;" id="analyze-tabs">
+                <li class="nav-item"><a class="nav-link active" href="#" data-tab="describe" onclick="selectAnalyzeTab('describe'); return false;">Describe</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-tab="column" onclick="selectAnalyzeTab('column'); return false;">Distribution</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-tab="correlation" onclick="selectAnalyzeTab('correlation'); return false;">Correlation</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-tab="quality" onclick="selectAnalyzeTab('quality'); return false;">Quality</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-tab="returns" onclick="selectAnalyzeTab('returns'); return false;">Returns</a></li>
+            </ul>
+            <button class="btn btn-sm btn-outline-secondary" onclick="toggleAnalyze()" title="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="qt-panel-body" id="analysis-body">
+            <div class="text-center py-4"><div class="spinner-border spinner-border-sm"></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- Row actions bar (hidden in read-only mode) -->
+{% if not read_only() %}
 <div class="d-flex justify-content-between align-items-center mb-2">
     <div id="delete-rows-bar" style="display:none;">
         <button class="btn btn-sm btn-danger" onclick="deleteSelectedRows()">
@@ -486,8 +523,10 @@
         </button>
     </div>
 </div>
+{% endif %}
 
 <!-- Add row form -->
+{% if not read_only() %}
 <div id="add-row-form" style="display:none;" class="qt-panel mb-2">
     <div class="qt-panel-head">
         <span class="qt-panel-head-title"><i class="bi bi-plus-circle"></i> Insert row</span>
@@ -515,6 +554,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 <!-- Data table -->
 <div class="table-container qt-panel" id="data-table"
@@ -555,6 +595,7 @@
     const INDEX_NAME = "{{ description.index.name if description.index else '' }}";
     const IS_MULTIINDEX = {{ 'true' if is_multiindex else 'false' }};
     const INDEX_NAMES = {{ index_names | tojson if index_names else '[]' }};
+    const READ_ONLY = {{ 'true' if read_only() else 'false' }};
 
     let chartInstance = null;
     let chartVisible = false;
@@ -777,6 +818,7 @@
         updateBadges();
         loadPage(0);
         autoUpdateChart();
+        refreshAnalyze();
     }
 
     function clearQuery() {
@@ -789,6 +831,7 @@
         updateBadges();
         loadPage(0);
         autoUpdateChart();
+        refreshAnalyze();
     }
 
     function loadPage(page) {
@@ -1109,6 +1152,7 @@
     // Redraw chart on theme change so Chart.js picks up the new palette.
     document.addEventListener('themechange', () => {
         if (chartVisible) drawChart();
+        refreshAnalyze();
     });
 
     function loadSidePaneDefault() {
@@ -1126,10 +1170,69 @@
             });
     }
 
+    // ── Analyze panel ──
+    let analyzeVisible = false;
+    let currentTab = "describe";
+
+    function toggleAnalyze() {
+        const section = document.getElementById("analyze-section");
+        analyzeVisible = section.style.display === "none";
+        section.style.display = analyzeVisible ? "block" : "none";
+        if (analyzeVisible) loadAnalyzeTab(currentTab);
+    }
+
+    function selectAnalyzeTab(tab) {
+        currentTab = tab;
+        document.querySelectorAll("#analyze-tabs .nav-link").forEach(a => {
+            a.classList.toggle("active", a.dataset.tab === tab);
+        });
+        loadAnalyzeTab(tab);
+    }
+
+    function loadAnalyzeTab(tab) {
+        let url;
+        if (tab === "describe")        url = `/api/analysis/describe/${LIB}/${SYM}?1=1`;
+        else if (tab === "column")     url = `/api/analysis/column/${LIB}/${SYM}?1=1`;
+        else if (tab === "correlation")url = `/api/analysis/correlation/${LIB}/${SYM}?method=pearson`;
+        else if (tab === "quality")    url = `/api/analysis/quality/${LIB}/${SYM}?1=1`;
+        else if (tab === "returns")    url = `/api/analysis/returns/${LIB}/${SYM}?1=1`;
+        url += buildQueryParam();
+        htmx.ajax("GET", url, "#analysis-body");
+    }
+
+    function loadColumnAnalysis(col) {
+        let url = `/api/analysis/column/${LIB}/${SYM}?col=${encodeURIComponent(col)}` + buildQueryParam();
+        htmx.ajax("GET", url, "#analysis-body");
+    }
+    function loadCorrelation(method) {
+        let url = `/api/analysis/correlation/${LIB}/${SYM}?method=${method}` + buildQueryParam();
+        htmx.ajax("GET", url, "#analysis-body");
+    }
+    function loadReturns(col) {
+        let url = `/api/analysis/returns/${LIB}/${SYM}?col=${encodeURIComponent(col)}` + buildQueryParam();
+        htmx.ajax("GET", url, "#analysis-body");
+    }
+
+    // Re-run the active analysis tab when the query changes or theme flips.
+    function refreshAnalyze() { if (analyzeVisible) loadAnalyzeTab(currentTab); }
+
+    // ── Export & code ──
+    function exportView(fmt) {
+        let url = `/api/export/${fmt}/${LIB}/${SYM}?1=1` + buildQueryParam();
+        window.location.href = url;
+    }
+    function showCodeExport() {
+        if (!analyzeVisible) toggleAnalyze();
+        document.querySelectorAll("#analyze-tabs .nav-link").forEach(a => a.classList.remove("active"));
+        let url = `/api/code/${LIB}/${SYM}?1=1` + buildQueryParam();
+        htmx.ajax("GET", url, "#analysis-body");
+    }
+
     // ── Cell editing ──
     let activeEdit = null;
 
     function editCell(el, rowIdx, colName) {
+        if (READ_ONLY) { showToast("Read-only mode — editing is disabled", "error"); return; }
         if (activeEdit) return;
         const originalValue = el.innerText.trim();
         activeEdit = { el, rowIdx, colName, originalValue };

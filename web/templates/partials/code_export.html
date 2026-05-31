@@ -1,0 +1,14 @@
+<div class="d-flex align-items-center justify-content-between mb-2">
+    <span class="label-mono"><i class="bi bi-code-slash"></i> Reproduce this view in Python</span>
+    <button class="btn btn-sm btn-outline-secondary" onclick="copyCodeExport(this)"><i class="bi bi-clipboard"></i> Copy</button>
+</div>
+<pre id="code-export-pre" style="background:var(--bg-2); border:1px solid var(--line-2); border-radius:6px; padding:0.75rem; overflow:auto; max-height:340px; font-family:var(--mono); font-size:0.75rem; color:var(--ink-1); margin:0;">{{ code }}</pre>
+<script>
+function copyCodeExport(btn) {
+    const text = document.getElementById('code-export-pre').innerText;
+    navigator.clipboard.writeText(text).then(function() {
+        btn.innerHTML = '<i class="bi bi-check-lg"></i> Copied';
+        setTimeout(function(){ btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy'; }, 1500);
+    });
+}
+</script>

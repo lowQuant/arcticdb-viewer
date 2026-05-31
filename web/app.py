@@ -6,8 +6,21 @@ from fastapi.responses import RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from core.connection import get_manager, load_connections
+from core.settings import is_read_only, ReadOnlyError
 
 app = FastAPI(title="arcticdb-viewer")
+
+
+@app.exception_handler(ReadOnlyError)
+async def _read_only_handler(request: Request, exc: ReadOnlyError):
+    """Any blocked write surfaces as a 403 with a toast, never a 500."""
+    from fastapi.responses import HTMLResponse
+    import json as _json
+    return HTMLResponse(
+        content="",
+        status_code=403,
+        headers={"HX-Trigger": _json.dumps({"showToast": {"message": str(exc), "type": "error"}})},
+    )
 
 templates_dir = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=templates_dir)
@@ -25,6 +38,7 @@ def _active_connection():
 
 templates.env.globals["is_connected"] = _is_connected
 templates.env.globals["active_connection"] = _active_connection
+templates.env.globals["read_only"] = is_read_only
 
 
 # ── Middleware: require connection for data routes ──
@@ -64,9 +78,10 @@ app.add_middleware(ConnectionMiddleware)
 
 # ── Routers ──
 
-from web.routes import connections, libraries, symbols, data  # noqa: E402
+from web.routes import connections, libraries, symbols, data, analysis  # noqa: E402
 
 app.include_router(connections.router)
 app.include_router(libraries.router)
 app.include_router(symbols.router)
 app.include_router(data.router)
+app.include_router(analysis.router)

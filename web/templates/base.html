@@ -757,6 +757,24 @@
         }
         [data-bs-theme="light"] .qt-nav::after { opacity: 0.5; }
 
+        /* ─────────────── Read-only badge ─────────────── */
+        .ro-badge {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            font-family: var(--mono);
+            font-size: 0.6875rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--info);
+            background: var(--info-dim);
+            border: 1px solid rgba(96,165,250,0.35);
+            border-radius: 4px;
+            padding: 0.2rem 0.55rem;
+            cursor: help;
+            align-self: center;
+        }
+        .ro-badge .bi { font-size: 0.85em; }
+
         /* ─────────────── Theme switcher ─────────────── */
         .theme-toggle {
             display: inline-flex;
@@ -920,6 +938,11 @@
             </a>
             {% if is_connected() %}
             <a class="qt-nav-link {% if request.url.path.startswith('/libraries') %}active{% endif %}" href="/libraries">Libraries</a>
+            {% endif %}
+            {% if read_only() %}
+            <span class="ro-badge" style="margin-left:auto;" title="Read-only mode — writes are blocked to protect your data. Restart with ADBVIEW_READONLY=0 to enable editing.">
+                <i class="bi bi-shield-lock-fill"></i> READ-ONLY
+            </span>
             {% endif %}
             <button class="theme-toggle" type="button" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme" style="margin-left: auto;">
                 <i class="bi bi-sun-fill"></i>
